@@ -1,8 +1,10 @@
-astropy
+astropy==4.0.1.post1
 certifi                       # via requests
+chardet                       # via requests
 h5py
+idna                          # via requests
 numpy
 requests
-requests-file
+requests-file==1.5.1
 typing_extensions
 urllib3                       # via requests

@@ -1,9 +1,12 @@
 coverage
 attrs                           # via pytest
+importlib-metadata              # via pytest
 more-itertools                  # via pytest
 packaging                       # via pytest
 pluggy                          # via pytest
 py                              # via pytest
 pytest
 pytest-cov
+responses==0.10.14
 wcwidth                         # via pytest
+zipp                            # via importlib
