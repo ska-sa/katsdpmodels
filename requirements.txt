@@ -1,1 +1,8 @@
-# TODO fill this in
+astropy
+certifi                       # via requests
+h5py
+numpy
+requests
+requests-file
+typing_extensions
+urllib3                       # via requests

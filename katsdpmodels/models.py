@@ -4,13 +4,15 @@ from abc import ABC, abstractmethod
 import io
 import logging
 import urllib.parse
-from typing import Mapping, Optional, Any, ClassVar
+from typing import Mapping, Optional, Any, ClassVar, Type, TypeVar
 
 import h5py
 import requests
 import requests_file
 
 
+MAX_ALIASES = 30
+_E = TypeVar('_E', bound='ModelError')
 _logger = logging.getLogger(__name__)
 
 
@@ -19,8 +21,16 @@ class ModelError(ValueError):
 
     def __init__(self, *args) -> None:
         super().__init__(*args)
-        self.original_url: Optional[str] = None
         self.url: Optional[str] = None
+        self.original_url: Optional[str] = None
+
+    @classmethod
+    def with_urls(cls: Type[_E], *args,
+                  url: Optional[str] = None, original_url: Optional[str] = None) -> _E:
+        exc = cls(args)
+        exc.url = url
+        exc.original_url = original_url
+        return exc
 
 
 class ModelTypeError(ModelError):
@@ -33,6 +43,10 @@ class ModelFormatError(ModelError):
 
 class DataError(ModelError):
     """The model was missing some data or it had the wrong format."""
+
+
+class TooManyAliasesError(ModelError):
+    """The limit on the number of alias redirections was reached."""
 
 
 class Model(ABC):
@@ -62,12 +76,19 @@ def _fetch_hdf5(
         url: str,
         model_type: str,
         get_options: Mapping[str, Any] = {}) -> h5py.File:
+    original_url = url
     with requests.session() as session:
         session.mount('file://', requests_file.FileAdapter())
+        aliases = 0
         while True:
             parts = urllib.parse.urlparse(url)
             with session.get(url, **get_options) as resp:
                 if parts.path.endswith('.alias'):
+                    aliases += 1
+                    if aliases > MAX_ALIASES:
+                        raise TooManyAliasesError.with_urls(
+                            f'Reached limit of {MAX_ALIASES} levels of aliases',
+                            url=url, original_url=original_url)
                     rel_path = resp.text.rstrip()
                     new_url = urllib.parse.urljoin(url, rel_path)
                     _logger.debug('Redirecting from %s to %s', url, new_url)
@@ -80,5 +101,7 @@ def _fetch_hdf5(
     h5 = h5py.File(io.BytesIO(data), 'r')
     actual_model_type = h5.attrs.get('model_type')
     if actual_model_type != model_type:
-        raise ValueError(f'Expected a model of type {model_type!r}, not {actual_model_type!r}')
+        raise ModelTypeError.with_urls(
+            f'Expected a model of type {model_type!r}, not {actual_model_type!r}',
+            url=url, original_url=original_url)
     return h5, url
