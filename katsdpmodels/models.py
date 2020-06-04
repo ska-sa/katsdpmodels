@@ -132,6 +132,9 @@ def fetch_raw(
         get_options: Mapping[str, Any] = {}) -> RawModel:
     original_url = url
     with requests.session() as session:
+        # TODO: requests_file is convenient, but it would be more efficient to
+        # open the file directly with h5py rather than sucking it into a
+        # BytesIO.
         session.mount('file://', requests_file.FileAdapter())
         aliases = 0
         while True:
