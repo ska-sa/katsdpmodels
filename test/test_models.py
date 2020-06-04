@@ -26,7 +26,7 @@ def get_data_url(filename: str) -> str:
 
 @responses.activate
 def test_fetch_raw_simple() -> None:
-    url = 'http://example.com/test/rfi_mask_ranges.hdf5'
+    url = 'http://test.invalid/test/rfi_mask_ranges.hdf5'
     responses.add(responses.GET, url, body=get_data('rfi_mask_ranges.hdf5'))
     raw = models.fetch_raw(url, 'rfi_mask')
     assert raw.url == url
@@ -46,8 +46,8 @@ def test_fetch_raw_file() -> None:
 
 @responses.activate
 def test_fetch_raw_alias() -> None:
-    alias_url = 'http://example.com/test/blah/test.alias'
-    real_url = 'http://example.com/test/rfi_mask_ranges.hdf5'
+    alias_url = 'http://test.invalid/test/blah/test.alias'
+    real_url = 'http://test.invalid/test/rfi_mask_ranges.hdf5'
     responses.add(responses.GET, alias_url, body='../rfi_mask_ranges.hdf5')
     responses.add(responses.GET, real_url, body=get_data('rfi_mask_ranges.hdf5'))
     raw = models.fetch_raw(alias_url, 'rfi_mask')
@@ -59,7 +59,7 @@ def test_fetch_raw_alias() -> None:
 
 @responses.activate
 def test_fetch_raw_alias_loop() -> None:
-    url = 'http://example.com/test/blah/test.alias'
+    url = 'http://test.invalid/test/blah/test.alias'
     responses.add(responses.GET, url, body='../blah/test.alias')
     with pytest.raises(models.TooManyAliasesError) as exc_info:
         models.fetch_raw(url, 'rfi_mask')
@@ -69,8 +69,8 @@ def test_fetch_raw_alias_loop() -> None:
 
 @responses.activate
 def test_fetch_raw_model_type_error() -> None:
-    alias_url = 'http://example.com/test/blah/test.alias'
-    real_url = 'http://example.com/test/rfi_mask_ranges.hdf5'
+    alias_url = 'http://test.invalid/test/blah/test.alias'
+    real_url = 'http://test.invalid/test/rfi_mask_ranges.hdf5'
     responses.add(responses.GET, alias_url, body='../rfi_mask_ranges.hdf5')
     responses.add(responses.GET, real_url, body=get_data('rfi_mask_ranges.hdf5'))
     with pytest.raises(models.ModelTypeError) as exc_info:
@@ -84,7 +84,7 @@ def test_fetch_raw_model_type_error() -> None:
 def test_fetch_raw_checksum_ok() -> None:
     data = get_data('rfi_mask_ranges.hdf5')
     digest = hashlib.sha256(data).hexdigest()
-    url = f'http://example.com/test/sha256_{digest}.hdf5'
+    url = f'http://test.invalid/test/sha256_{digest}.hdf5'
     responses.add(responses.GET, url, body=data)
     raw = models.fetch_raw(url, 'rfi_mask')
     assert raw.checksum == digest
@@ -94,7 +94,7 @@ def test_fetch_raw_checksum_ok() -> None:
 def test_fetch_raw_checksum_bad() -> None:
     data = get_data('rfi_mask_ranges.hdf5')
     digest = hashlib.sha256(data).hexdigest()
-    url = f'http://example.com/test/sha256_{digest}.hdf5'
+    url = f'http://test.invalid/test/sha256_{digest}.hdf5'
     # Now invalidate the digest
     data += b'blahblahblah'
     responses.add(responses.GET, url, body=data)
