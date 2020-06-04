@@ -40,7 +40,6 @@ class RFIMaskRanges(RFIMask):
         # TODO: document what the requirements are
         self.ranges = ranges
 
-    @u.quantity_input(frequency=u.Hz, baseline_length=u.m)
     def is_masked(self, frequency: u.Quantity, baseline_length: u.Quantity) -> bool:
         # TODO: should this be vectorised so that one can get a mask across
         # multiple frequencies or baselines (or both)?
