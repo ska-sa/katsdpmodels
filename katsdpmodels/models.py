@@ -8,6 +8,7 @@ import re
 import urllib.parse
 from typing import Mapping, Optional, Any, ClassVar, Type, TypeVar
 
+import attr
 import h5py
 import requests
 import requests_file
@@ -55,33 +56,80 @@ class TooManyAliasesError(ModelError):
     """The limit on the number of alias redirections was reached."""
 
 
+@attr.s
+class RawModel:
+    """Raw data for a model.
+
+    This is a thin container for a :class:`h5py.File` which also records the
+    URL and sha256 checksum.
+    """
+
+    hdf5: h5py.File = attr.ib()
+    url: str = attr.ib()
+    original_url: str = attr.ib()
+    checksum: str = attr.ib()
+
+    def __enter__(self) -> 'RawModel':
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        self.hdf5.close()
+
+
 class Model(ABC):
-    """Base class for models."""
+    """Base class for models.
+
+    Models can either be loaded from instances of :class:`RawModel` or
+    constructed directly. Models loaded from :class:`RawModel` store the
+    checksum of the raw data, and are considered equal if the checksums
+    match. Otherwise, equality is by object identity.
+
+    If a model loaded from :class:`RawModel` is modified, clear the
+    :attr:`checksum` attribute since it will no longer be valid.
+    """
 
     model_type: ClassVar[str]
     model_format: ClassVar[str]
+    checksum: Optional[str]
+
+    def __init__(self, *, raw: Optional[RawModel] = None) -> None:
+        self.checksum = raw.checksum if raw is not None else None
 
     @classmethod
     @abstractmethod
-    def from_hdf5(cls, hdf5: h5py.File) -> 'Model':
-        """Load a model from an open HDF5 file."""
+    def from_raw(cls, raw: RawModel) -> 'Model':
+        """Load a model from raw data."""
 
     @classmethod
     def from_url(cls, url: str) -> 'Model':
-        hdf5, new_url = _fetch_hdf5(url, cls.model_type)
+        raw = fetch_raw(url, cls.model_type)
         try:
-            with hdf5:
-                return cls.from_hdf5(hdf5)
+            with raw:
+                return cls.from_raw(raw)
         except ModelError as exc:
-            exc.original_url = url
-            exc.url = new_url
+            exc.original_url = raw.original_url
+            exc.url = raw.url
             raise
 
+    def __eq__(self, other: object) -> Any:
+        if not isinstance(other, Model):
+            return NotImplemented
+        elif self.checksum is not None and other.checksum is not None:
+            return self.checksum == other.checksum
+        else:
+            return self is other
 
-def _fetch_hdf5(
+    def __hash__(self) -> int:
+        if self.checksum is not None:
+            return hash(self.checksum)
+        else:
+            return super().__hash__()
+
+
+def fetch_raw(
         url: str,
         model_type: str,
-        get_options: Mapping[str, Any] = {}) -> h5py.File:
+        get_options: Mapping[str, Any] = {}) -> RawModel:
     original_url = url
     with requests.session() as session:
         session.mount('file://', requests_file.FileAdapter())
@@ -112,10 +160,10 @@ def _fetch_hdf5(
                 url=url, original_url=original_url)
 
     # TODO: validate checksum if embedded in URL
-    h5 = h5py.File(io.BytesIO(data), 'r')
-    actual_model_type = h5.attrs.get('model_type')
+    hdf5 = h5py.File(io.BytesIO(data), 'r')
+    actual_model_type = hdf5.attrs.get('model_type')
     if actual_model_type != model_type:
         raise ModelTypeError.with_urls(
             f'Expected a model of type {model_type!r}, not {actual_model_type!r}',
             url=url, original_url=original_url)
-    return h5, url
+    return RawModel(hdf5=hdf5, url=url, original_url=original_url, checksum=checksum)

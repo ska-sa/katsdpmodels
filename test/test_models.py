@@ -25,69 +25,73 @@ def get_data_url(filename: str) -> str:
 
 
 @responses.activate
-def test_fetch_hdf5_simple():
+def test_fetch_raw_simple() -> None:
     url = 'http://example.com/test/rfi_mask_ranges.hdf5'
     responses.add(responses.GET, url, body=get_data('rfi_mask_ranges.hdf5'))
-    hdf5, new_url = models._fetch_hdf5(url, 'rfi_mask')
-    assert new_url == url
-    assert isinstance(hdf5, h5py.File)
-    assert hdf5.attrs['model_format'] == 'ranges'
+    raw = models.fetch_raw(url, 'rfi_mask')
+    assert raw.url == url
+    assert raw.original_url == url
+    assert isinstance(raw.hdf5, h5py.File)
+    assert raw.hdf5.attrs['model_format'] == 'ranges'
 
 
-def test_fetch_hdf5_file():
+def test_fetch_raw_file() -> None:
     url = get_data_url('rfi_mask_ranges.hdf5')
-    hdf5, new_url = models._fetch_hdf5(url, 'rfi_mask')
-    assert new_url == url
-    assert isinstance(hdf5, h5py.File)
-    assert hdf5.attrs['model_format'] == 'ranges'
+    raw = models.fetch_raw(url, 'rfi_mask')
+    assert raw.url == url
+    assert raw.original_url == url
+    assert isinstance(raw.hdf5, h5py.File)
+    assert raw.hdf5.attrs['model_format'] == 'ranges'
 
 
 @responses.activate
-def test_fetch_hdf5_alias():
+def test_fetch_raw_alias() -> None:
     alias_url = 'http://example.com/test/blah/test.alias'
     real_url = 'http://example.com/test/rfi_mask_ranges.hdf5'
     responses.add(responses.GET, alias_url, body='../rfi_mask_ranges.hdf5')
     responses.add(responses.GET, real_url, body=get_data('rfi_mask_ranges.hdf5'))
-    hdf5, new_url = models._fetch_hdf5(alias_url, 'rfi_mask')
-    assert new_url == real_url
-    assert isinstance(hdf5, h5py.File)
-    assert hdf5.attrs['model_format'] == 'ranges'
+    raw = models.fetch_raw(alias_url, 'rfi_mask')
+    assert raw.url == real_url
+    assert raw.original_url == alias_url
+    assert isinstance(raw.hdf5, h5py.File)
+    assert raw.hdf5.attrs['model_format'] == 'ranges'
 
 
 @responses.activate
-def test_fetch_hdf5_alias_loop():
+def test_fetch_raw_alias_loop() -> None:
     url = 'http://example.com/test/blah/test.alias'
     responses.add(responses.GET, url, body='../blah/test.alias')
     with pytest.raises(models.TooManyAliasesError) as exc_info:
-        models._fetch_hdf5(url, 'rfi_mask')
+        models.fetch_raw(url, 'rfi_mask')
     assert exc_info.value.url == url
     assert exc_info.value.original_url == url
 
 
 @responses.activate
-def test_fetch_hdf5_model_type_error():
+def test_fetch_raw_model_type_error() -> None:
     alias_url = 'http://example.com/test/blah/test.alias'
     real_url = 'http://example.com/test/rfi_mask_ranges.hdf5'
     responses.add(responses.GET, alias_url, body='../rfi_mask_ranges.hdf5')
     responses.add(responses.GET, real_url, body=get_data('rfi_mask_ranges.hdf5'))
     with pytest.raises(models.ModelTypeError) as exc_info:
-        models._fetch_hdf5(alias_url, 'bad_type')
+        models.fetch_raw(alias_url, 'bad_type')
     assert exc_info.value.url == real_url
     assert exc_info.value.original_url == alias_url
     assert 'rfi_mask' in str(exc_info.value)
 
 
 @responses.activate
-def test_fetch_hdf5_checksum_ok():
+def test_fetch_raw_checksum_ok() -> None:
     data = get_data('rfi_mask_ranges.hdf5')
     digest = hashlib.sha256(data).hexdigest()
     url = f'http://example.com/test/sha256_{digest}.hdf5'
     responses.add(responses.GET, url, body=data)
-    models._fetch_hdf5(url, 'rfi_mask')
+    raw = models.fetch_raw(url, 'rfi_mask')
+    assert raw.checksum == digest
 
 
 @responses.activate
-def test_fetch_hdf5_checksum_bad():
+def test_fetch_raw_checksum_bad() -> None:
     data = get_data('rfi_mask_ranges.hdf5')
     digest = hashlib.sha256(data).hexdigest()
     url = f'http://example.com/test/sha256_{digest}.hdf5'
@@ -95,5 +99,5 @@ def test_fetch_hdf5_checksum_bad():
     data += b'blahblahblah'
     responses.add(responses.GET, url, body=data)
     with pytest.raises(models.ChecksumError) as exc_info:
-        models._fetch_hdf5(url, 'rfi_mask')
+        models.fetch_raw(url, 'rfi_mask')
     assert exc_info.value.url == url
