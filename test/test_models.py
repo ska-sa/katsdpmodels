@@ -2,6 +2,7 @@
 
 import os
 import pathlib
+import hashlib
 
 import pytest
 import h5py
@@ -74,3 +75,25 @@ def test_fetch_hdf5_model_type_error():
     assert exc_info.value.url == real_url
     assert exc_info.value.original_url == alias_url
     assert 'rfi_mask' in str(exc_info.value)
+
+
+@responses.activate
+def test_fetch_hdf5_checksum_ok():
+    data = get_data('rfi_mask_ranges.hdf5')
+    digest = hashlib.sha256(data).hexdigest()
+    url = f'http://example.com/test/sha256_{digest}.hdf5'
+    responses.add(responses.GET, url, body=data)
+    models._fetch_hdf5(url, 'rfi_mask')
+
+
+@responses.activate
+def test_fetch_hdf5_checksum_bad():
+    data = get_data('rfi_mask_ranges.hdf5')
+    digest = hashlib.sha256(data).hexdigest()
+    url = f'http://example.com/test/sha256_{digest}.hdf5'
+    # Now invalidate the digest
+    data += b'blahblahblah'
+    responses.add(responses.GET, url, body=data)
+    with pytest.raises(models.ChecksumError) as exc_info:
+        models._fetch_hdf5(url, 'rfi_mask')
+    assert exc_info.value.url == url

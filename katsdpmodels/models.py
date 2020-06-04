@@ -2,7 +2,9 @@
 
 from abc import ABC, abstractmethod
 import io
+import hashlib
 import logging
+import re
 import urllib.parse
 from typing import Mapping, Optional, Any, ClassVar, Type, TypeVar
 
@@ -43,6 +45,10 @@ class ModelFormatError(ModelError):
 
 class DataError(ModelError):
     """The model was missing some data or it had the wrong format."""
+
+
+class ChecksumError(DataError):
+    """The model did not match the checksum embedded in the filename."""
 
 
 class TooManyAliasesError(ModelError):
@@ -96,6 +102,14 @@ def _fetch_hdf5(
                     continue
                 data = resp.content
             break
+
+    checksum = hashlib.sha256(data).hexdigest()
+    match = re.search(r'/sha256_([a-z0-9]+)\.[^/]+$', parts.path)
+    if match:
+        if checksum != match.group(1):
+            raise ChecksumError.with_urls(
+                'Content did not match checksum in URL',
+                url=url, original_url=original_url)
 
     # TODO: validate checksum if embedded in URL
     h5 = h5py.File(io.BytesIO(data), 'r')
