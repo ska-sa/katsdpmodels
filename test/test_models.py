@@ -3,6 +3,8 @@
 import os
 import pathlib
 import hashlib
+from typing import ClassVar
+from typing_extensions import Literal
 
 import pytest
 import h5py
@@ -101,3 +103,32 @@ def test_fetch_raw_checksum_bad() -> None:
     with pytest.raises(models.ChecksumError) as exc_info:
         models.fetch_raw(url, 'rfi_mask')
     assert exc_info.value.url == url
+
+
+class DummyModel(models.Model):
+    model_type: ClassVar[Literal['rfi_mask']] = 'rfi_mask'
+
+    @classmethod
+    def from_raw(cls, raw: models.RawModel) -> 'DummyModel':
+        return cls(raw=raw)
+
+
+@responses.activate
+def test_eq_hash() -> None:
+    data = get_data('rfi_mask_ranges.hdf5')
+    url1 = 'http://test.invalid/test/rfi_mask_ranges.hdf5'
+    url2 = 'http://test.invalid/another_test.hdf5'
+    responses.add(responses.GET, url1, body=data)
+    responses.add(responses.GET, url2, body=data)
+    model1 = DummyModel.from_url(url1)
+    model2 = DummyModel.from_url(url2)
+    model3 = DummyModel()
+    model4 = DummyModel()
+    assert model1 == model1
+    assert model1 == model2
+    assert model1 != model3
+    assert model3 == model3
+    assert model3 != model4
+    assert hash(model1) == hash(model2)
+    assert hash(model1) != hash(model3)
+    assert hash(model3) != hash(model4)
