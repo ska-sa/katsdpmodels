@@ -6,9 +6,9 @@ import hashlib
 import logging
 import re
 import urllib.parse
-from typing import Mapping, Optional, Any, ClassVar, Type, TypeVar
+from typing import List, Dict, Iterable, Optional, Any, ClassVar, Type, TypeVar
+from typing_extensions import Protocol
 
-import attr
 import h5py
 import requests
 import requests_file
@@ -16,6 +16,8 @@ import requests_file
 
 MAX_ALIASES = 30
 _E = TypeVar('_E', bound='ModelError')
+_M = TypeVar('_M', bound='Model')
+_F = TypeVar('_F', bound='Fetcher')
 _logger = logging.getLogger(__name__)
 
 
@@ -56,66 +58,32 @@ class TooManyAliasesError(ModelError):
     """The limit on the number of alias redirections was reached."""
 
 
-@attr.s
-class RawModel:
-    """Raw data for a model.
-
-    This is a thin container for a :class:`h5py.File` which also records the
-    URL and sha256 checksum.
-    """
-
-    hdf5: h5py.File = attr.ib()
-    url: str = attr.ib()
-    original_url: str = attr.ib()
-    checksum: str = attr.ib()
-
-    def __enter__(self) -> 'RawModel':
-        return self
-
-    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        self.hdf5.close()
-
-
 class Model(ABC):
     """Base class for models.
 
-    Models can either be loaded from instances of :class:`RawModel` or
-    constructed directly. Models loaded from :class:`RawModel` store the
-    checksum of the raw data, and are considered equal if the checksums
-    match. Otherwise, equality is by object identity.
+    Models can either be loaded from instances of :class:`h5py` or constructed
+    directly. Models loaded by the fetcher store the checksum of the raw data,
+    and are considered equal if the checksums match. Otherwise, equality is by
+    object identity.
 
-    If a model loaded from :class:`RawModel` is modified, clear the
-    :attr:`checksum` attribute since it will no longer be valid.
+    Models loaded by the fetcher should not be modified, as they may be shared
+    by other users. Instead, make a copy and modify that.
     """
 
     model_type: ClassVar[str]
     model_format: ClassVar[str]
-    checksum: Optional[str]
-
-    def __init__(self, *, raw: Optional[RawModel] = None) -> None:
-        self.checksum = raw.checksum if raw is not None else None
+    checksum: Optional[str] = None
 
     @classmethod
     @abstractmethod
-    def from_raw(cls, raw: RawModel) -> 'Model':
+    def from_hdf5(cls: Type[_M], hdf5: h5py.File) -> _M:
         """Load a model from raw data."""
-
-    @classmethod
-    def from_url(cls, url: str) -> 'Model':
-        raw = fetch_raw(url, cls.model_type)
-        try:
-            with raw:
-                return cls.from_raw(raw)
-        except ModelError as exc:
-            exc.original_url = raw.original_url
-            exc.url = raw.url
-            raise
 
     def __eq__(self, other: object) -> Any:
         if not isinstance(other, Model):
             return NotImplemented
         elif self.checksum is not None and other.checksum is not None:
-            return self.checksum == other.checksum
+            return self.checksum == other.checksum and type(self) is type(other)
         else:
             return self is other
 
@@ -126,47 +94,136 @@ class Model(ABC):
             return super().__hash__()
 
 
-def fetch_raw(
-        url: str,
-        model_type: str,
-        get_options: Mapping[str, Any] = {}) -> RawModel:
-    original_url = url
-    with requests.session() as session:
-        # TODO: requests_file is convenient, but it would be more efficient to
-        # open the file directly with h5py rather than sucking it into a
-        # BytesIO.
-        session.mount('file://', requests_file.FileAdapter())
+class Session(Protocol):
+    """Generalization of :class:`requests.Session`."""
+
+    def get(self, url: str) -> requests.Response: ...
+    def close(self) -> None: ...
+
+
+class Fetcher:
+    """Fetches and caches models.
+
+    It caches every URL it fetches, so it should not be held for a long time.
+    It is best suited to fetching a batch of models, some of which may be turn
+    out to be aliases of each other.
+
+    It should be closed with :meth:`close` when no longer in use. It also
+    implements the context manager protocol for this purpose.
+
+    This class is *not* thread-safe.
+
+    Parameters
+    ----------
+    session
+        Interface for doing the actual HTTP requests. If not specified, an
+        internal session will be created (which supports ``file://`` URLs), and
+        closed when the fetcher is closed. If a custom session is provided it
+        will *not* be closed (so it can be shared between multiple
+        :class:`Fetcher` instances).
+
+        It need not be an instance of :class:`requests.Session`; one can
+        create any class as long as it implements the :class:`Session`
+        protocol.
+    """
+
+    def __init__(self, *, session: Optional[Session] = None) -> None:
+        self._session: Session
+        if session is None:
+            self._session = requests.Session()
+            # TODO: requests_file is convenient, but it would be more efficient to
+            # open the file directly with h5py rather than sucking it into a
+            # BytesIO.
+            self._session.mount('file://', requests_file.FileAdapter())
+            self._close_session = True
+        else:
+            self._session = session
+            self._close_session = False
+        self._alias_cache: Dict[str, str] = {}
+        self._model_cache: Dict[str, Model] = {}
+
+    def close(self) -> None:
+        if self._close_session:
+            self._session.close()
+        self._alias_cache.clear()
+        self._model_cache.clear()
+
+    def resolve(self, url: str) -> str:
+        """Find the canonical URL, following aliases."""
+        original_url = url
         aliases = 0
-        while True:
-            parts = urllib.parse.urlparse(url)
-            with session.get(url, **get_options) as resp:
-                if parts.path.endswith('.alias'):
-                    aliases += 1
-                    if aliases > MAX_ALIASES:
-                        raise TooManyAliasesError.with_urls(
-                            f'Reached limit of {MAX_ALIASES} levels of aliases',
-                            url=url, original_url=original_url)
+        parts = urllib.parse.urlparse(url)
+        while parts.path.endswith('.alias'):
+            aliases += 1
+            if aliases > MAX_ALIASES:
+                raise TooManyAliasesError.with_urls(
+                    f'Reached limit of {MAX_ALIASES} levels of aliases',
+                    url=url, original_url=original_url)
+            if url in self._alias_cache:
+                new_url = self._alias_cache[url]
+            else:
+                with self._session.get(url) as resp:
                     rel_path = resp.text.rstrip()
-                    new_url = urllib.parse.urljoin(url, rel_path)
-                    _logger.debug('Redirecting from %s to %s', url, new_url)
-                    url = new_url
-                    continue
-                data = resp.content
-            break
+                new_url = urllib.parse.urljoin(url, rel_path)
+                self._alias_cache[url] = new_url
+            _logger.debug('Redirecting from %s to %s', url, new_url)
+            url = new_url
+            parts = urllib.parse.urlparse(url)
+        return url
 
-    checksum = hashlib.sha256(data).hexdigest()
-    match = re.search(r'/sha256_([a-z0-9]+)\.[^/]+$', parts.path)
-    if match:
-        if checksum != match.group(1):
-            raise ChecksumError.with_urls(
-                'Content did not match checksum in URL',
-                url=url, original_url=original_url)
+    def get(self, url: str, model_class: Type[_M]) -> _M:
+        original_url = url
+        url = self.resolve(url)
+        if url in self._model_cache:
+            model = self._model_cache[url]
+            if model_class.model_type != model.model_type:
+                raise ModelTypeError.with_urls(
+                    f'Expected a model of type {model_class.model_type!r}, '
+                    f'not {model.model_type!r}',
+                    url=url, original_url=original_url)
+            if not isinstance(model, model_class):
+                raise TypeError('model_class should be the base class for the model type')
 
-    # TODO: validate checksum if embedded in URL
-    hdf5 = h5py.File(io.BytesIO(data), 'r')
-    actual_model_type = hdf5.attrs.get('model_type')
-    if actual_model_type != model_type:
-        raise ModelTypeError.with_urls(
-            f'Expected a model of type {model_type!r}, not {actual_model_type!r}',
-            url=url, original_url=original_url)
-    return RawModel(hdf5=hdf5, url=url, original_url=original_url, checksum=checksum)
+        with self._session.get(url) as resp:
+            data = resp.content
+        checksum = hashlib.sha256(data).hexdigest()
+        parts = urllib.parse.urlparse(url)
+        match = re.search(r'/sha256_([a-z0-9]+)\.[^/]+$', parts.path)
+        if match:
+            if checksum != match.group(1):
+                raise ChecksumError.with_urls(
+                    'Content did not match checksum in URL',
+                    url=url, original_url=original_url)
+
+        with h5py.File(io.BytesIO(data), 'r') as hdf5:
+            model_type = hdf5.attrs.get('model_type')
+            if model_type != model_class.model_type:
+                raise ModelTypeError.with_urls(
+                    f'Expected a model of type {model_class.model_type!r}, not {model_type!r}',
+                    url=url, original_url=original_url)
+            try:
+                new_model = model_class.from_hdf5(hdf5)
+            except ModelError as exc:
+                exc.original_url = original_url
+                exc.url = url
+                raise
+            new_model.checksum = checksum
+            return new_model
+
+    def __enter__(self: _F) -> _F:
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        self.close()
+
+
+def fetch_model(url: str, model_class: Type[_M], *,
+                session: Optional[Session] = None) -> _M:
+    with Fetcher(session=session) as fetcher:
+        return fetcher.get(url, model_class)
+
+
+def fetch_models(urls: Iterable[str], model_class: Type[_M], *,
+                 session: Optional[Session] = None) -> List[_M]:
+    with Fetcher(session=session) as fetcher:
+        return [fetcher.get(url, model_class) for url in urls]

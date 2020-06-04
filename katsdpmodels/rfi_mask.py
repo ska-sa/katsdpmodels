@@ -1,7 +1,7 @@
 """Masks for radio-frequency interference."""
 
 from abc import abstractmethod
-from typing import Optional, Type, TypeVar, ClassVar
+from typing import Type, TypeVar, ClassVar
 from typing_extensions import Literal
 
 import numpy as np
@@ -23,10 +23,10 @@ class RFIMask(models.Model):
         """Determine whether given frequency is masked for the given baseline length."""
 
     @classmethod
-    def from_raw(cls, raw: models.RawModel) -> 'RFIMask':
-        model_format = raw.hdf5.attrs.get('model_format')
+    def from_hdf5(cls, hdf5: h5py.File) -> 'RFIMask':
+        model_format = hdf5.attrs.get('model_format')
         if model_format == 'ranges':
-            return RFIMaskRanges.from_raw(raw)
+            return RFIMaskRanges.from_hdf5(hdf5)
         else:
             raise models.ModelFormatError(
                 f'Unknown model_format {model_format!r} for {cls.model_type}')
@@ -35,9 +35,7 @@ class RFIMask(models.Model):
 class RFIMaskRanges(RFIMask):
     model_format: ClassVar[Literal['rfi_format']] = 'rfi_format'
 
-    def __init__(self, ranges: astropy.table.QTable, *,
-                 raw: Optional[models.RawModel] = None) -> None:
-        super().__init__(raw=raw)
+    def __init__(self, ranges: astropy.table.QTable) -> None:
         # TODO: validate the shape and units
         # TODO: document what the requirements are
         self.ranges = ranges
@@ -53,9 +51,9 @@ class RFIMaskRanges(RFIMask):
         return np.any(in_range)
 
     @classmethod
-    def from_raw(cls: Type[_R], raw: models.RawModel) -> _R:
+    def from_hdf5(cls: Type[_R], hdf5: h5py.File) -> _R:
         try:
-            data = raw.hdf5['/ranges']
+            data = hdf5['/ranges']
             if isinstance(data, h5py.Group):
                 raise KeyError        # It should be a dataset, not a group
         except KeyError:
@@ -64,4 +62,4 @@ class RFIMaskRanges(RFIMask):
         ranges['min_frequency'] <<= u.Hz
         ranges['max_frequency'] <<= u.Hz
         ranges['max_baseline'] <<= u.m
-        return cls(ranges, raw=raw)
+        return cls(ranges)

@@ -1,5 +1,4 @@
 astropy==4.0.1.post1
-attrs
 certifi                       # via requests
 chardet                       # via requests
 h5py

@@ -3,7 +3,7 @@
 import os
 import pathlib
 import hashlib
-from typing import ClassVar
+from typing import Any, ClassVar
 from typing_extensions import Literal
 
 import pytest
@@ -26,74 +26,85 @@ def get_data_url(filename: str) -> str:
     return pathlib.PurePath(path).as_uri()
 
 
+class DummyModel(models.Model):
+    model_type: ClassVar[Literal['rfi_mask']] = 'rfi_mask'
+
+    def __init__(self, ranges: Any) -> None:
+        self.ranges = ranges
+
+    @classmethod
+    def from_hdf5(cls, hdf5: h5py.File) -> 'DummyModel':
+        return cls(hdf5['/ranges'][:])
+
+
+class DummyModel2(models.Model):
+    model_type: ClassVar[Literal['something_else']] = 'something_else'
+
+    # Implement this just so that it's not an abstract class
+    @classmethod
+    def from_hdf5(cls, hdf5: h5py.File) -> 'DummyModel2':
+        return cls()
+
+
 @responses.activate
-def test_fetch_raw_simple() -> None:
+def test_fetch_model_simple() -> None:
     url = 'http://test.invalid/test/rfi_mask_ranges.hdf5'
     responses.add(responses.GET, url, body=get_data('rfi_mask_ranges.hdf5'))
-    raw = models.fetch_raw(url, 'rfi_mask')
-    assert raw.url == url
-    assert raw.original_url == url
-    assert isinstance(raw.hdf5, h5py.File)
-    assert raw.hdf5.attrs['model_format'] == 'ranges'
+    model = models.fetch_model(url, DummyModel)
+    assert len(model.ranges) == 2
 
 
-def test_fetch_raw_file() -> None:
+def test_fetch_model_file() -> None:
     url = get_data_url('rfi_mask_ranges.hdf5')
-    raw = models.fetch_raw(url, 'rfi_mask')
-    assert raw.url == url
-    assert raw.original_url == url
-    assert isinstance(raw.hdf5, h5py.File)
-    assert raw.hdf5.attrs['model_format'] == 'ranges'
+    model = models.fetch_model(url, DummyModel)
+    assert len(model.ranges) == 2
 
 
 @responses.activate
-def test_fetch_raw_alias() -> None:
+def test_fetch_model_alias() -> None:
     alias_url = 'http://test.invalid/test/blah/test.alias'
     real_url = 'http://test.invalid/test/rfi_mask_ranges.hdf5'
     responses.add(responses.GET, alias_url, body='../rfi_mask_ranges.hdf5')
     responses.add(responses.GET, real_url, body=get_data('rfi_mask_ranges.hdf5'))
-    raw = models.fetch_raw(alias_url, 'rfi_mask')
-    assert raw.url == real_url
-    assert raw.original_url == alias_url
-    assert isinstance(raw.hdf5, h5py.File)
-    assert raw.hdf5.attrs['model_format'] == 'ranges'
+    model = models.fetch_model(alias_url, DummyModel)
+    assert len(model.ranges) == 2
 
 
 @responses.activate
-def test_fetch_raw_alias_loop() -> None:
+def test_fetch_model_alias_loop() -> None:
     url = 'http://test.invalid/test/blah/test.alias'
     responses.add(responses.GET, url, body='../blah/test.alias')
     with pytest.raises(models.TooManyAliasesError) as exc_info:
-        models.fetch_raw(url, 'rfi_mask')
+        models.fetch_model(url, DummyModel)
     assert exc_info.value.url == url
     assert exc_info.value.original_url == url
 
 
 @responses.activate
-def test_fetch_raw_model_type_error() -> None:
+def test_fetch_model_model_type_error() -> None:
     alias_url = 'http://test.invalid/test/blah/test.alias'
     real_url = 'http://test.invalid/test/rfi_mask_ranges.hdf5'
     responses.add(responses.GET, alias_url, body='../rfi_mask_ranges.hdf5')
     responses.add(responses.GET, real_url, body=get_data('rfi_mask_ranges.hdf5'))
     with pytest.raises(models.ModelTypeError) as exc_info:
-        models.fetch_raw(alias_url, 'bad_type')
+        models.fetch_model(alias_url, DummyModel2)
     assert exc_info.value.url == real_url
     assert exc_info.value.original_url == alias_url
     assert 'rfi_mask' in str(exc_info.value)
 
 
 @responses.activate
-def test_fetch_raw_checksum_ok() -> None:
+def test_fetch_model_checksum_ok() -> None:
     data = get_data('rfi_mask_ranges.hdf5')
     digest = hashlib.sha256(data).hexdigest()
     url = f'http://test.invalid/test/sha256_{digest}.hdf5'
     responses.add(responses.GET, url, body=data)
-    raw = models.fetch_raw(url, 'rfi_mask')
-    assert raw.checksum == digest
+    model = models.fetch_model(url, DummyModel)
+    assert model.checksum == digest
 
 
 @responses.activate
-def test_fetch_raw_checksum_bad() -> None:
+def test_fetch_model_checksum_bad() -> None:
     data = get_data('rfi_mask_ranges.hdf5')
     digest = hashlib.sha256(data).hexdigest()
     url = f'http://test.invalid/test/sha256_{digest}.hdf5'
@@ -101,16 +112,8 @@ def test_fetch_raw_checksum_bad() -> None:
     data += b'blahblahblah'
     responses.add(responses.GET, url, body=data)
     with pytest.raises(models.ChecksumError) as exc_info:
-        models.fetch_raw(url, 'rfi_mask')
+        models.fetch_model(url, DummyModel)
     assert exc_info.value.url == url
-
-
-class DummyModel(models.Model):
-    model_type: ClassVar[Literal['rfi_mask']] = 'rfi_mask'
-
-    @classmethod
-    def from_raw(cls, raw: models.RawModel) -> 'DummyModel':
-        return cls(raw=raw)
 
 
 @responses.activate
@@ -120,10 +123,11 @@ def test_eq_hash() -> None:
     url2 = 'http://test.invalid/another_test.hdf5'
     responses.add(responses.GET, url1, body=data)
     responses.add(responses.GET, url2, body=data)
-    model1 = DummyModel.from_url(url1)
-    model2 = DummyModel.from_url(url2)
-    model3 = DummyModel()
-    model4 = DummyModel()
+    with models.Fetcher() as fetcher:
+        model1 = fetcher.get(url1, DummyModel)
+        model2 = fetcher.get(url2, DummyModel)
+    model3 = DummyModel(None)
+    model4 = DummyModel(None)
     assert model1 == model1
     assert model1 == model2
     assert model1 != model3
