@@ -39,3 +39,5 @@ def test_eq_hash() -> None:
     assert hash(model1) == hash(model2)
     assert hash(model1) != hash(model3)
     assert hash(model3) != hash(model4)
+    assert model1 != 1
+    assert model4 != 1
