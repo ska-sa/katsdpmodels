@@ -18,6 +18,7 @@
 
 import os
 import pathlib
+import urllib.parse
 from typing import ClassVar, Any
 from typing_extensions import Literal
 
@@ -26,6 +27,7 @@ import h5py
 from katsdpmodels import models
 
 
+BASE_URL = 'http://test.invalid/data/'
 DATA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data')
 
 
@@ -35,6 +37,10 @@ def get_data(filename: str) -> bytes:
 
 
 def get_data_url(filename: str) -> str:
+    return urllib.parse.urljoin(BASE_URL, filename)
+
+
+def get_file_url(filename: str) -> str:
     path = os.path.join(DATA_DIR, filename)
     return pathlib.PurePath(path).as_uri()
 
