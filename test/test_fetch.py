@@ -16,8 +16,10 @@
 
 """Tests for :mod:`katsdpmodels.fetch`."""
 
+import contextlib
 import hashlib
 
+import h5py
 import pytest
 import requests
 import responses
@@ -50,6 +52,23 @@ def test_fetch_model_model_type_error(filename, mock_responses) -> None:
     assert exc_info.value.url == url
     assert exc_info.value.original_url == url
     assert 'rfi_mask' in str(exc_info.value)
+
+
+def test_fetch_model_cached_model_type_error(mock_responses, monkeypatch) -> None:
+    class OtherModel(models.Model):
+        model_type = 'other'
+
+        @classmethod
+        def from_hdf5(cls, hdf5: h5py.File) -> 'OtherModel':
+            return cls()
+
+    url = get_data_url('rfi_mask_ranges.hdf5')
+    with fetch.Fetcher() as fetcher:
+        fetcher.get(url, DummyModel)
+        with pytest.raises(models.ModelTypeError) as exc_info:
+            fetcher.get(url, OtherModel)
+        assert exc_info.value.url == url
+        assert exc_info.value.original_url == url
 
 
 def test_fetch_model_not_hdf5(mock_responses) -> None:
@@ -119,3 +138,25 @@ def test_fetch_models(mock_responses) -> None:
     assert models[0] is models[1]
     assert len(models[0].ranges) == 2
     assert len(mock_responses.calls) == 3
+
+
+class DummySession:
+    def __init__(self) -> None:
+        self._session = requests.Session()
+        self.closed = False
+        self.calls = 0
+
+    def get(self, url: str) -> requests.Response:
+        self.calls += 1
+        return self._session.get(url)
+
+    def close(self) -> None:
+        self._session.close()
+        self.closed = True
+
+
+def test_custom_session(mock_responses):
+    with contextlib.closing(DummySession()) as session:
+        fetch.fetch_model(get_data_url('direct.alias'), DummyModel, session=session)
+        assert session.calls == 2
+        assert not session.closed

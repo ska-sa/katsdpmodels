@@ -38,8 +38,8 @@ _M = TypeVar('_M', bound='models.Model')
 class Session(Protocol):
     """Generalization of :class:`requests.Session`."""
 
-    def get(self, url: str) -> requests.Response: ...
-    def close(self) -> None: ...
+    def get(self, url: str) -> requests.Response: ...     # pragma: nocover
+    def close(self) -> None: ...                          # pragma: nocover
 
 
 class Fetcher:
