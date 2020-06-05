@@ -19,6 +19,7 @@
 import hashlib
 
 import pytest
+import requests
 import responses
 
 from katsdpmodels import models, fetch
@@ -93,3 +94,28 @@ def test_fetch_model_checksum_bad() -> None:
     with pytest.raises(models.ChecksumError) as exc_info:
         fetch.fetch_model(url, DummyModel)
     assert exc_info.value.url == url
+
+
+@responses.activate
+def test_fetch_model_bad_http_status() -> None:
+    url = 'http://test.invalid/test/rfi_mask_ranges.hdf5'
+    responses.add(responses.GET, url, body=get_data('rfi_mask_ranges.hdf5'), status=404)
+    with pytest.raises(requests.HTTPError) as exc_info:
+        fetch.fetch_model(url, DummyModel)
+    assert exc_info.value.response.status_code == 404
+
+
+@responses.activate
+def test_fetch_model_alias_bad_http_status() -> None:
+    url = 'http://test.invalid/test/blah/test.alias'
+    responses.add(responses.GET, url, body='test.alias', status=404)
+    with pytest.raises(requests.HTTPError) as exc_info:
+        fetch.fetch_model(url, DummyModel)
+    assert exc_info.value.response.status_code == 404
+
+
+@responses.activate
+def test_fetch_model_connection_error() -> None:
+    # responses raises ConnectionError for any unregistered URL
+    with pytest.raises(requests.ConnectionError):
+        fetch.fetch_model('http://test.invalid/test/rfi_mask_ranges.hdf5', DummyModel)

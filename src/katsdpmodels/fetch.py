@@ -66,6 +66,13 @@ class Fetcher:
         It need not be an instance of :class:`requests.Session`; one can
         create any class as long as it implements the :class:`Session`
         protocol.
+
+    Raises
+    ------
+    :exc:`.ModelError`
+        For any issues with the model itself
+    :exc:`requests.exceptions.RequestException`
+        For any issues at the HTTP level
     """
 
     def __init__(self, *, session: Optional[Session] = None) -> None:
@@ -104,6 +111,7 @@ class Fetcher:
                 new_url = self._alias_cache[url]
             else:
                 with self._session.get(url) as resp:
+                    resp.raise_for_status()
                     rel_path = resp.text.rstrip()
                 new_url = urllib.parse.urljoin(url, rel_path)
                 self._alias_cache[url] = new_url
@@ -126,6 +134,7 @@ class Fetcher:
                 raise TypeError('model_class should be the base class for the model type')
 
         with self._session.get(url) as resp:
+            resp.raise_for_status()
             data = resp.content
         checksum = hashlib.sha256(data).hexdigest()
         parts = urllib.parse.urlparse(url)
