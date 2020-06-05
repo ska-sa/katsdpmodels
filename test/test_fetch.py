@@ -23,7 +23,7 @@ import requests
 import responses
 
 from katsdpmodels import models, fetch
-from test_utils import get_data, get_data_url, get_file_url, DummyModel, DummyModel2
+from test_utils import get_data, get_data_url, get_file_url, DummyModel
 
 
 @pytest.mark.parametrize('url_gen', [get_data_url, get_file_url])
@@ -42,14 +42,22 @@ def test_fetch_model_alias_loop(mock_responses) -> None:
     assert exc_info.value.original_url == url
 
 
-@pytest.mark.parametrize('filename', ['rfi_mask_ranges.hdf5', 'direct.alias'])
+@pytest.mark.parametrize('filename', ['bad_model_type.hdf5', 'no_model_type.hdf5'])
 def test_fetch_model_model_type_error(filename, mock_responses) -> None:
     url = get_data_url(filename)
     with pytest.raises(models.ModelTypeError) as exc_info:
-        fetch.fetch_model(url, DummyModel2)
-    assert exc_info.value.url == get_data_url('rfi_mask_ranges.hdf5')
+        fetch.fetch_model(url, DummyModel)
+    assert exc_info.value.url == url
     assert exc_info.value.original_url == url
     assert 'rfi_mask' in str(exc_info.value)
+
+
+def test_fetch_model_not_hdf5(mock_responses) -> None:
+    url = get_data_url('not_hdf5.hdf5')
+    with pytest.raises(models.DataError) as exc_info:
+        fetch.fetch_model(url, DummyModel)
+    assert exc_info.value.url == url
+    assert exc_info.value.original_url == url
 
 
 def test_fetch_model_checksum_ok(mock_responses) -> None:

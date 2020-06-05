@@ -54,12 +54,3 @@ class DummyModel(models.Model):
     @classmethod
     def from_hdf5(cls, hdf5: h5py.File) -> 'DummyModel':
         return cls(hdf5['/ranges'][:])
-
-
-class DummyModel2(models.Model):
-    model_type: ClassVar[Literal['something_else']] = 'something_else'
-
-    # Implement this just so that it's not an abstract class
-    @classmethod
-    def from_hdf5(cls, hdf5: h5py.File) -> 'DummyModel2':
-        return cls()
