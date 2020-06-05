@@ -132,6 +132,7 @@ class Fetcher:
                     url=url, original_url=original_url)
             if not isinstance(model, model_class):
                 raise TypeError('model_class should be the base class for the model type')
+            return model
 
         with self._session.get(url) as resp:
             resp.raise_for_status()
@@ -158,6 +159,7 @@ class Fetcher:
                 exc.url = url
                 raise
             new_model.checksum = checksum
+            self._model_cache[url] = new_model
             return new_model
 
     def __enter__(self: _F) -> _F:

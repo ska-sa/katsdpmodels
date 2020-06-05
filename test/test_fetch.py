@@ -91,3 +91,13 @@ def test_fetch_model_connection_error(mock_responses) -> None:
     # responses raises ConnectionError for any unregistered URL
     with pytest.raises(requests.ConnectionError):
         fetch.fetch_model(get_data_url('does_not_exist.hdf5'), DummyModel)
+
+
+def test_fetcher_caching(mock_responses) -> None:
+    with fetch.Fetcher() as fetcher:
+        model1 = fetcher.get(get_data_url('rfi_mask_ranges.hdf5'), DummyModel)
+        model2 = fetcher.get(get_data_url('indirect.alias'), DummyModel)
+        model3 = fetcher.get(get_data_url('direct.alias'), DummyModel)
+        assert model1 is model2
+        assert model1 is model3
+        assert len(mock_responses.calls) == 3
