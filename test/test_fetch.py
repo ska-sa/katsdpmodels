@@ -98,6 +98,16 @@ def test_fetcher_caching(mock_responses) -> None:
         model1 = fetcher.get(get_data_url('rfi_mask_ranges.hdf5'), DummyModel)
         model2 = fetcher.get(get_data_url('indirect.alias'), DummyModel)
         model3 = fetcher.get(get_data_url('direct.alias'), DummyModel)
-        assert model1 is model2
-        assert model1 is model3
-        assert len(mock_responses.calls) == 3
+    assert model1 is model2
+    assert model1 is model3
+    assert len(mock_responses.calls) == 3
+
+
+def test_fetch_models(mock_responses) -> None:
+    models = fetch.fetch_models(
+        [get_data_url('rfi_mask_ranges.hdf5'), get_data_url('indirect.alias')],
+        DummyModel)
+    assert len(models) == 2
+    assert models[0] is models[1]
+    assert len(models[0].ranges) == 2
+    assert len(mock_responses.calls) == 3
