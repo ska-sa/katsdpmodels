@@ -43,6 +43,15 @@ def test_is_masked_scalar(frequency, baseline_length, result, ranges_model):
     assert ranges_model.is_masked(frequency, baseline_length) == result
 
 
+@pytest.mark.parametrize(
+    'filename',
+    ['rfi_mask_missing_dataset.hdf5', 'rfi_mask_ranges_is_group.hdf5'])
+def test_missing_dataset(filename, mock_responses):
+    url = get_data_url(filename)
+    with pytest.raises(models.DataError, match='Model is missing ranges dataset'):
+        fetch.fetch_model(url, rfi_mask.RFIMask)
+
+
 def test_bad_model_format(mock_responses):
     url = get_data_url('rfi_mask_bad_format.hdf5')
     with pytest.raises(models.ModelFormatError) as exc_info:
