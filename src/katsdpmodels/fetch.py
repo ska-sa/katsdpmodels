@@ -113,7 +113,7 @@ class Fetcher:
                 with self._session.get(url) as resp:
                     resp.raise_for_status()
                     rel_path = resp.text.rstrip()
-                new_url = urllib.parse.urljoin(url, rel_path)
+                    new_url = urllib.parse.urljoin(resp.url, rel_path)
                 self._alias_cache[url] = new_url
             _logger.debug('Redirecting from %s to %s', url, new_url)
             url = new_url
@@ -137,6 +137,7 @@ class Fetcher:
         with self._session.get(url) as resp:
             resp.raise_for_status()
             data = resp.content
+            url = resp.url     # Handle HTTP redirects
         checksum = hashlib.sha256(data).hexdigest()
         parts = urllib.parse.urlparse(url)
         match = re.search(r'/sha256_([a-z0-9]+)\.[^/]+$', parts.path)

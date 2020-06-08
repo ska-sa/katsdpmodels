@@ -114,6 +114,13 @@ def test_fetch_model_bad_http_status(filename, mock_responses) -> None:
     assert exc_info.value.response.status_code == 404
 
 
+def test_fetch_model_http_redirect(mock_responses) -> None:
+    url = get_data_url('subdir/redirect.alias')
+    mock_responses.add(responses.GET, url, headers={'Location': '../direct.alias'}, status=307)
+    model = fetch.fetch_model(url, DummyModel)
+    assert len(model.ranges) == 2
+
+
 def test_fetch_model_connection_error(mock_responses) -> None:
     # responses raises ConnectionError for any unregistered URL
     with pytest.raises(requests.ConnectionError):
