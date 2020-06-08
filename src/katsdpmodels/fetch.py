@@ -161,7 +161,7 @@ class Fetcher:
             raise
         except Exception as exc:
             raise models.DataError.with_urls(
-                f'Failed to load model from {url}',
+                f'Failed to load model from {url}: {exc}',
                 url=url, original_url=original_url) from exc
         new_model.checksum = checksum
         self._model_cache[url] = new_model
