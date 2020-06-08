@@ -43,6 +43,15 @@ class RFIMask(models.Model):
         broadcasting rules applying.
         """
 
+    @abstractmethod
+    def max_baseline_length(self, frequency: u.Quantity):
+        """Determine maximum baseline length for which data at `frequency` should be masked.
+
+        If the frequency is not masked at all, returns 0.0, and if it is masked
+        at all baseline lengths, returns +inf. One may also supply an array of
+        frequencies and receive an array of responses.
+        """
+
     @classmethod
     def from_hdf5(cls, hdf5: h5py.File) -> 'RFIMask':
         model_format = models.ensure_str(hdf5.attrs.get('model_format', ''))
@@ -71,6 +80,15 @@ class RFIMaskRanges(RFIMask):
             & (b <= self.ranges['max_baseline'])
         )
         return np.any(in_range, axis=-1)
+
+    def max_baseline_length(self, frequency: u.Quantity):
+        # Add extra axis which will broadcast with the masks
+        f = frequency[..., np.newaxis]
+        in_range = (self.ranges['min_frequency'] <= f) & (f <= self.ranges['max_frequency'])
+        b = np.broadcast_to(self.ranges['max_baseline'], in_range.shape, subok=True)
+        return np.max(b,
+                      axis=-1, where=in_range,
+                      initial=0.0 * self.ranges['max_baseline'].unit)
 
     @classmethod
     def from_hdf5(cls: Type[_R], hdf5: h5py.File) -> _R:

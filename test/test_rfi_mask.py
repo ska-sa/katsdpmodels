@@ -57,6 +57,36 @@ def test_is_masked_vector(ranges_model):
 
 
 @pytest.mark.parametrize(
+    'frequency,result',
+    [
+        (90e6 * u.Hz, 0 * u.m),
+        (90 * u.MHz, 0 * u.m),
+        (110e6 * u.Hz, 1000 * u.m),
+        (110 * u.MHz, 1000 * u.m),
+        (300 * u.MHz, 0 * u.m),
+        (600 * u.MHz, np.inf * u.m)
+    ])
+def test_max_baseline_length_scalar(frequency, result, ranges_model):
+    assert ranges_model.max_baseline_length(frequency) == result
+
+
+def test_max_baseline_length_vector(ranges_model):
+    frequency = u.Quantity([90, 110, 300, 600, 900], u.MHz)
+    result = ranges_model.max_baseline_length(frequency)
+    np.testing.assert_array_equal(
+        result.to_value(u.m),
+        [0, 1000, 0, np.inf, 0]
+    )
+
+
+def test_max_baseline_length_empty(ranges_model):
+    ranges_model.ranges.remove_rows(np.s_[:])
+    assert ranges_model.max_baseline_length(1 * u.Hz) == 0 * u.m
+    result = ranges_model.max_baseline_length([1, 2] * u.Hz)
+    np.testing.assert_array_equal(result.to_value(u.m), [0.0, 0.0])
+
+
+@pytest.mark.parametrize(
     'filename',
     ['rfi_mask_missing_dataset.hdf5', 'rfi_mask_ranges_is_group.hdf5'])
 def test_missing_dataset(filename, mock_responses):
