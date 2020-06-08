@@ -17,6 +17,7 @@
 """Tests for :mod:`katsdpmodels.rfi_mask`"""
 
 import astropy.units as u
+import numpy as np
 import pytest
 
 from katsdpmodels import models, fetch, rfi_mask
@@ -41,6 +42,18 @@ def ranges_model(mock_responses):
     ])
 def test_is_masked_scalar(frequency, baseline_length, result, ranges_model):
     assert ranges_model.is_masked(frequency, baseline_length) == result
+
+
+def test_is_masked_vector(ranges_model):
+    frequency = u.Quantity([90, 110, 90, 110, 300, 600, 600], u.MHz)
+    baseline_length = u.Quantity([2, 2, 2000, 2000, 2, 2, 2000], u.m)
+    result = ranges_model.is_masked(frequency, baseline_length)
+    expected = np.array([False, True, False, False, False, True, True])
+    np.testing.assert_array_equal(result, expected)
+    # Test broadcasting of inputs against each other
+    result = ranges_model.is_masked(frequency, 2 * u.m)
+    expected = np.array([False, True, False, True, False, True, True])
+    np.testing.assert_array_equal(result, expected)
 
 
 @pytest.mark.parametrize(

@@ -35,8 +35,13 @@ class RFIMask(models.Model):
     model_type: ClassVar[Literal['rfi_mask']] = 'rfi_mask'
 
     @abstractmethod
-    def is_masked(self, frequency: u.Quantity, baseline_length: u.Quantity) -> bool:
-        """Determine whether given frequency is masked for the given baseline length."""
+    def is_masked(self, frequency: u.Quantity, baseline_length: u.Quantity):
+        """Determine whether given frequency is masked for the given baseline length.
+
+        The return value is either a boolean (if frequency and baseline_length
+        are scalar) or an array of boolean if they're arrays, with the usual
+        broadcasting rules applying.
+        """
 
     @classmethod
     def from_hdf5(cls, hdf5: h5py.File) -> 'RFIMask':
@@ -56,15 +61,16 @@ class RFIMaskRanges(RFIMask):
         # TODO: document what the requirements are
         self.ranges = ranges
 
-    def is_masked(self, frequency: u.Quantity, baseline_length: u.Quantity) -> bool:
-        # TODO: should this be vectorised so that one can get a mask across
-        # multiple frequencies or baselines (or both)?
+    def is_masked(self, frequency: u.Quantity, baseline_length: u.Quantity):
+        # Add extra axis which will broadcast with the masks
+        f = frequency[..., np.newaxis]
+        b = baseline_length[..., np.newaxis]
         in_range = (
-            (self.ranges['min_frequency'] <= frequency)
-            & (frequency <= self.ranges['max_frequency'])
-            & (baseline_length <= self.ranges['max_baseline'])
+            (self.ranges['min_frequency'] <= f)
+            & (f <= self.ranges['max_frequency'])
+            & (b <= self.ranges['max_baseline'])
         )
-        return np.any(in_range)
+        return np.any(in_range, axis=-1)
 
     @classmethod
     def from_hdf5(cls: Type[_R], hdf5: h5py.File) -> _R:
