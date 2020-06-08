@@ -18,6 +18,8 @@
 
 from abc import ABC, abstractmethod
 from typing import Optional, Union, Any, ClassVar, Type, TypeVar
+
+import numpy as np
 import h5py
 
 
@@ -116,3 +118,36 @@ def ensure_str(s: Union[bytes, str]) -> str:
         return s.decode('utf-8')
     else:
         raise TypeError('Expected bytes or str, received {}'.format(type(s)))
+
+
+def require_columns(array: Any, dtype: np.dtype) -> Any:
+    """Validate the columns in a table.
+
+    The `dtype` is the expected dtype, which must be a structured dtype. The
+    array is checked for compatibility: it must have all the required fields
+    (but may have more), and they must be castable to the the expected dtype.
+
+    The return value is the input array restricted to the required columns
+    and cast to the required dtype. It may be either a view or a copy,
+    depending on whether any casting was required.
+
+    This function is not designed to support nested structuring, and will not
+    recursively filter out unwanted sub-structures.
+
+    Raises
+    ------
+    DataError
+        if the types are not compatible
+    """
+    if array.dtype == dtype:
+        return np.asanyarray(array)
+    if array.dtype.names is None:
+        raise DataError('Array does not have named columns')
+    for name in dtype.names:
+        if name not in array.dtype.names:
+            raise DataError(f'Column {name} is missing')
+        if not np.can_cast(array.dtype[name], dtype[name], 'same_kind'):
+            raise DataError(f'Column {name} has type {array.dtype[name]}, expected {dtype[name]}')
+    out = np.empty(array.shape, dtype)
+    np.lib.recfunctions.assign_fields_by_name(out, array)
+    return out

@@ -52,6 +52,12 @@ def test_missing_dataset(filename, mock_responses):
         fetch.fetch_model(url, rfi_mask.RFIMask)
 
 
+def test_bad_shape(mock_responses):
+    url = get_data_url('rfi_mask_ranges_2d.hdf5')
+    with pytest.raises(models.DataError, match='ranges dataset should have 1 dimension, found 2'):
+        fetch.fetch_model(url, rfi_mask.RFIMask)
+
+
 def test_bad_model_format(mock_responses):
     url = get_data_url('rfi_mask_bad_format.hdf5')
     with pytest.raises(models.ModelFormatError) as exc_info:

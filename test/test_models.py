@@ -18,9 +18,10 @@
 
 import hashlib
 
+import numpy as np
 import pytest
 
-from katsdpmodels.models import ensure_str
+from katsdpmodels import models
 from test_utils import DummyModel
 
 
@@ -48,9 +49,60 @@ def test_eq_hash() -> None:
 
 @pytest.mark.parametrize('s', ['foo', b'foo'])
 def test_ensure_str(s):
-    assert ensure_str(s) == 'foo'
+    assert models.ensure_str(s) == 'foo'
 
 
 def test_ensure_str_type_error():
     with pytest.raises(TypeError):
-        ensure_str(1)
+        models.ensure_str(1)
+
+
+def test_require_columns_missing_column():
+    dtype1 = np.dtype([('a', 'f8'), ('b', 'i4')])
+    dtype2 = np.dtype([('a', 'f8'), ('c', 'i4')])
+    array = np.zeros((5,), dtype1)
+    with pytest.raises(models.DataError, match='Column c is missing'):
+        models.require_columns(array, dtype2)
+
+
+def test_require_columns_unstructured():
+    dtype = np.dtype([('a', 'f8'), ('b', 'i4')])
+    array = np.zeros((5,), np.float32)
+    with pytest.raises(models.DataError, match='Array does not have named columns'):
+        models.require_columns(array, dtype)
+
+
+def test_require_columns_dtype_mismatch():
+    dtype1 = np.dtype([('a', 'f8')])
+    dtype2 = np.dtype([('a', 'i4')])
+    array = np.zeros((5,), dtype1)
+    with pytest.raises(models.DataError, match='Column a has type float64, expected int32'):
+        models.require_columns(array, dtype2)
+
+
+def test_require_columns_same_dtype():
+    dtype = np.dtype([('a', 'f8'), ('b', 'i4')])
+    array = np.array([(1.5, 1), (3.5, 3)], dtype=dtype)
+    out = models.require_columns(array, dtype)
+    np.testing.assert_array_equal(array, out)
+    assert np.shares_memory(array, out)
+
+
+def test_require_columns_change_byteorder():
+    dtype1 = np.dtype([('a', '>f8')])
+    dtype2 = np.dtype([('a', '<f8')])
+    array = np.array([1.0, 1.5, 2.0], dtype=dtype1)
+    out = models.require_columns(array, dtype2)
+    np.testing.assert_array_equal(array, out)
+    # Some versions of numpy considered dtypes to be equal even if the byte
+    # order was different, so explicitly compare byte order.
+    assert out.dtype['a'].byteorder == dtype2['a'].byteorder
+
+
+def test_require_columns_extra_column():
+    dtype1 = np.dtype([('a', 'f8'), ('b', 'f8')])
+    dtype2 = np.dtype([('b', 'f8')])
+    array = np.array([(1.0, 10.0), (1.5, 15.0), (2.0, 20.0)], dtype=dtype1)
+    expected = np.array([10.0, 15.0, 20.0], dtype=dtype2)
+    out = models.require_columns(array, dtype2)
+    np.testing.assert_equal(out, expected)

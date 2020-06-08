@@ -52,7 +52,7 @@ class RFIMaskRanges(RFIMask):
     model_format: ClassVar[Literal['rfi_format']] = 'rfi_format'
 
     def __init__(self, ranges: astropy.table.QTable) -> None:
-        # TODO: validate the shape and units
+        # TODO: validate the columns and units
         # TODO: document what the requirements are
         self.ranges = ranges
 
@@ -74,7 +74,15 @@ class RFIMaskRanges(RFIMask):
                 raise KeyError        # It should be a dataset, not a group
         except KeyError:
             raise models.DataError('Model is missing ranges dataset') from None
-        ranges = astropy.table.QTable(data[:])
+        if data.ndim != 1:
+            raise models.DataError(f'ranges dataset should have 1 dimension, found {data.ndim}')
+        expected_dtype = np.dtype([
+            ('min_frequency', 'f8'),
+            ('max_frequency', 'f8'),
+            ('max_baseline', 'f8')
+        ])
+        data = models.require_columns(data, expected_dtype)
+        ranges = astropy.table.QTable(data[...], copy=False)
         ranges['min_frequency'] <<= u.Hz
         ranges['max_frequency'] <<= u.Hz
         ranges['max_baseline'] <<= u.m
