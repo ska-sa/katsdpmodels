@@ -148,7 +148,7 @@ class Fetcher:
 
         try:
             with h5py.File(io.BytesIO(data), 'r') as hdf5:
-                model_type = hdf5.attrs.get('model_type')
+                model_type = models.ensure_str(hdf5.attrs.get('model_type', ''))
                 if model_type != model_class.model_type:
                     raise models.ModelTypeError.with_urls(
                         f'Expected a model of type {model_class.model_type!r}, not {model_type!r}',

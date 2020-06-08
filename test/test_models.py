@@ -18,6 +18,9 @@
 
 import hashlib
 
+import pytest
+
+from katsdpmodels.models import ensure_str
 from test_utils import DummyModel
 
 
@@ -41,3 +44,13 @@ def test_eq_hash() -> None:
     assert hash(model3) != hash(model4)
     assert model1 != 1
     assert model4 != 1
+
+
+@pytest.mark.parametrize('s', ['foo', b'foo'])
+def test_ensure_str(s):
+    assert ensure_str(s) == 'foo'
+
+
+def test_ensure_str_type_error():
+    with pytest.raises(TypeError):
+        ensure_str(1)

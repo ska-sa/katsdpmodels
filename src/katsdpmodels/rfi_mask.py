@@ -40,7 +40,7 @@ class RFIMask(models.Model):
 
     @classmethod
     def from_hdf5(cls, hdf5: h5py.File) -> 'RFIMask':
-        model_format = hdf5.attrs.get('model_format')
+        model_format = models.ensure_str(hdf5.attrs.get('model_format', ''))
         if model_format == 'ranges':
             return RFIMaskRanges.from_hdf5(hdf5)
         else:

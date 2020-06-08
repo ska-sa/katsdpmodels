@@ -17,7 +17,7 @@
 """Base functionality common to all model types."""
 
 from abc import ABC, abstractmethod
-from typing import Optional, Any, ClassVar, Type, TypeVar
+from typing import Optional, Union, Any, ClassVar, Type, TypeVar
 import h5py
 
 
@@ -96,3 +96,23 @@ class Model(ABC):
             return hash(self.checksum)
         else:
             return super().__hash__()
+
+
+def ensure_str(s: Union[bytes, str]) -> str:
+    """Decode bytes to string if necessary.
+
+    This is provided to work around for https://github.com/h5py/h5py/issues/379.
+
+    Raises
+    ------
+    TypeError
+        if `s` is neither :class:`bytes` nor :class:`str`.
+    UnicodeDecodeError
+        if `s` is :class:`bytes` and is not valid UTF-8.
+    """
+    if isinstance(s, str):
+        return s
+    elif isinstance(s, bytes):
+        return s.decode('utf-8')
+    else:
+        raise TypeError('Expected bytes or str, received {}'.format(type(s)))
