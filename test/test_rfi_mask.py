@@ -1,0 +1,50 @@
+################################################################################
+# Copyright (c) 2020, National Research Foundation (SARAO)
+#
+# Licensed under the BSD 3-Clause License (the "License"); you may not use
+# this file except in compliance with the License. You may obtain a copy
+# of the License at
+#
+#   https://opensource.org/licenses/BSD-3-Clause
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+################################################################################
+
+"""Tests for :mod:`katsdpmodels.rfi_mask`"""
+
+import astropy.units as u
+import pytest
+
+from katsdpmodels import models, fetch, rfi_mask
+from test_utils import get_data_url
+
+
+@pytest.fixture
+def ranges_model(mock_responses):
+    return fetch.fetch_model(get_data_url('rfi_mask_ranges.hdf5'), rfi_mask.RFIMask)
+
+
+@pytest.mark.parametrize(
+    'frequency,baseline_length,result',
+    [
+        (90e6 * u.Hz, 2 * u.m, False),
+        (110e6 * u.Hz, 2 * u.m, True),
+        (110 * u.MHz, 2 * u.m, True),
+        (110e6 * u.Hz, 2000 * u.m, False),
+        (100 * u.MHz, 2 * u.km, False),
+        (600e6 * u.Hz, 2000 * u.m, True),
+        (600 * u.MHz, 2 * u.km, True)
+    ])
+def test_is_masked_scalar(frequency, baseline_length, result, ranges_model):
+    assert ranges_model.is_masked(frequency, baseline_length) == result
+
+
+def test_bad_model_format(mock_responses):
+    url = get_data_url('rfi_mask_bad_format.hdf5')
+    with pytest.raises(models.ModelFormatError) as exc_info:
+        fetch.fetch_model(url, rfi_mask.RFIMask)
+    assert str(exc_info.value) == "Unknown model_format 'not_ranges' for rfi_mask"
