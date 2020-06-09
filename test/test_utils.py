@@ -16,6 +16,7 @@
 
 """Utilities for other tests."""
 
+import io
 import os
 import pathlib
 import urllib.parse
@@ -45,7 +46,7 @@ def get_file_url(filename: str) -> str:
     return pathlib.PurePath(path).as_uri()
 
 
-class DummyModel(models.Model):
+class DummyModel(models.SimpleHDF5Model):
     model_type: ClassVar[Literal['rfi_mask']] = 'rfi_mask'
 
     def __init__(self, ranges: Any) -> None:
@@ -54,8 +55,7 @@ class DummyModel(models.Model):
 
     @classmethod
     def from_hdf5(cls, hdf5: h5py.File) -> 'DummyModel':
-        with hdf5:
-            return cls(hdf5['/ranges'][:])
+        return cls(hdf5['/ranges'][:])
 
     def close(self) -> None:
         super().close()

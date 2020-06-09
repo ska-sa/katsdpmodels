@@ -18,6 +18,7 @@
 
 import contextlib
 import hashlib
+from typing import Mapping, Optional
 
 import h5py
 import pytest
@@ -57,7 +58,7 @@ def test_fetch_model_model_type_error(filename, mock_responses) -> None:
 
 
 def test_fetch_model_cached_model_type_error(mock_responses, monkeypatch) -> None:
-    class OtherModel(models.Model):
+    class OtherModel(models.SimpleHDF5Model):
         model_type = 'other'
 
         @classmethod
@@ -147,16 +148,20 @@ class DummySession:
         self.closed = False
         self.calls = 0
 
-    def get(self, url: str) -> requests.Response:
+    def get(self, url: str, *, headers: Optional[Mapping[str, str]] = None) -> requests.Response:
         self.calls += 1
-        return self._session.get(url)
+        return self._session.get(url, headers=headers)
+
+    def head(self, url: str, *, headers: Optional[Mapping[str, str]] = None) -> requests.Response:
+        self.calls += 1
+        return self._session.head(url, headers=headers)
 
     def close(self) -> None:
         self._session.close()
         self.closed = True
 
 
-def test_custom_session(mock_responses):
+def test_custom_session(mock_responses) -> None:
     with contextlib.closing(DummySession()) as session:
         fetch.fetch_model(get_data_url('direct.alias'), DummyModel, session=session)
         assert session.calls == 2

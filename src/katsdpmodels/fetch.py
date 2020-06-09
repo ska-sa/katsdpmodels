@@ -20,10 +20,9 @@ import hashlib
 import re
 import logging
 import urllib.parse
-from typing import Dict, Optional, Type, TypeVar, Any
+from typing import BinaryIO, Dict, Tuple, Optional, Mapping, Type, TypeVar, Any
 from typing_extensions import Protocol
 
-import h5py
 import requests
 import requests_file
 
@@ -39,7 +38,8 @@ _M = TypeVar('_M', bound='models.Model')
 class Session(Protocol):
     """Generalization of :class:`requests.Session`."""
 
-    def get(self, url: str) -> requests.Response: ...     # pragma: nocover
+    def get(self, url: str, *, headers: Optional[Mapping[str, str]] = None) -> requests.Response: ...   # pragma: nocover  # noqa: E501
+    def head(self, url: str, *, headers: Optional[Mapping[str, str]] = None) -> requests.Response: ...  # pragma: nocover  # noqa: E501
     def close(self) -> None: ...                          # pragma: nocover
 
 
@@ -142,13 +142,53 @@ class Fetcher:
             parts = urllib.parse.urlparse(url)
         return url
 
-    def get(self, url: str, model_class: Type[_M]) -> _M:
+    def _get_eager(self, url: str) -> Tuple[BinaryIO, str, str]:
+        with self._session.get(url) as resp:
+            resp.raise_for_status()
+            data = resp.content
+            url = resp.url     # Handle HTTP redirects
+        checksum = hashlib.sha256(data).hexdigest()
+        parts = urllib.parse.urlparse(url)
+        match = re.search(r'/sha256_([a-z0-9]+)\.[^/]+$', parts.path)
+        if match:
+            if checksum != match.group(1):
+                raise models.ChecksumError('Content did not match checksum in URL')
+        return io.BytesIO(data), url, checksum
+
+    def _get_lazy(self, url: str) -> Tuple[BinaryIO, str]:
+        # TODO: implement
+        fh, url, _ = self._get_eager(url)
+        return fh, url
+
+    def get(self, url: str, model_class: Type[_M], *,
+            lazy: bool = False) -> _M:
         """Retrieve a single model.
 
         The caller must *not* close the retrieved model, as it is cached and
         a future request for the model would return the closed model. Instead,
         the caller must close the fetcher once it no longer needs any of the
         models.
+
+        Parameters
+        ----------
+        lazy
+            If true, create a view of the HDF5 file that only retrieves data
+            as it is needed. Whether this actually allows data to be loaded
+            lazily depends on the `model_class`: some model classes will read
+            all the data into memory on creation, in which case lazy loading
+            may perform significantly worse.
+
+            Lazy loading imposes some additional requirements:
+
+            1. If a custom session is passed to the constructor, it must
+               support the RFC 7233 ``Range`` header and return a response
+               with the matching ``Content-Range``. It must also return a
+               ``Content-Length`` header for :meth:`Session.head` requests.
+            2. The session must not be closed while the model is in use, even
+               if the fetcher is no longer needed.
+            3. The checksum stored in the filename is not validated.
+            4. If the model is already in the cache, the laziness setting is
+               ignored and the cached model is returned.
         """
         original_url = url
         url = self.resolve(url)
@@ -163,30 +203,22 @@ class Fetcher:
                 raise TypeError('model_class should be the base class for the model type')
             return model
 
-        with self._session.get(url) as resp:
-            resp.raise_for_status()
-            data = resp.content
-            url = resp.url     # Handle HTTP redirects
-        checksum = hashlib.sha256(data).hexdigest()
-        parts = urllib.parse.urlparse(url)
-        match = re.search(r'/sha256_([a-z0-9]+)\.[^/]+$', parts.path)
-        if match:
-            if checksum != match.group(1):
-                raise models.ChecksumError.with_urls(
-                    'Content did not match checksum in URL',
-                    url=url, original_url=original_url)
+        try:
+            if lazy:
+                fh, url = self._get_lazy(url)
+                checksum: Optional[str] = None
+            else:
+                fh, url, checksum = self._get_eager(url)
+        except models.ModelError as exc:
+            exc.original_url = original_url
+            exc.url = url
+            raise
 
         try:
             with contextlib.ExitStack() as exit_stack:
-                hdf5 = h5py.File(io.BytesIO(data), 'r')
-                exit_stack.callback(hdf5.close)
-                model_type = models.ensure_str(hdf5.attrs.get('model_type', ''))
-                if model_type != model_class.model_type:
-                    raise models.ModelTypeError.with_urls(
-                        f'Expected a model of type {model_class.model_type!r}, not {model_type!r}',
-                        url=url, original_url=original_url)
-                new_model = model_class.from_hdf5(hdf5)
-                exit_stack.pop_all()   # new_model now owns hdf5
+                exit_stack.callback(fh.close)
+                new_model = model_class.from_file(fh, url)
+                exit_stack.pop_all()   # new_model now owns fh, or has closed it
         except models.ModelError as exc:
             exc.original_url = original_url
             exc.url = url

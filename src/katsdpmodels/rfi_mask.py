@@ -31,7 +31,7 @@ from . import models
 _R = TypeVar('_R', bound='RFIMaskRanges')
 
 
-class RFIMask(models.Model):
+class RFIMask(models.SimpleHDF5Model):
     model_type: ClassVar[Literal['rfi_mask']] = 'rfi_mask'
 
     @abstractmethod
@@ -92,23 +92,22 @@ class RFIMaskRanges(RFIMask):
 
     @classmethod
     def from_hdf5(cls: Type[_R], hdf5: h5py.File) -> _R:
-        with hdf5:
-            try:
-                data = hdf5['/ranges']
-                if isinstance(data, h5py.Group):
-                    raise KeyError        # It should be a dataset, not a group
-            except KeyError:
-                raise models.DataError('Model is missing ranges dataset') from None
-            if data.ndim != 1:
-                raise models.DataError(f'ranges dataset should have 1 dimension, found {data.ndim}')
-            expected_dtype = np.dtype([
-                ('min_frequency', 'f8'),
-                ('max_frequency', 'f8'),
-                ('max_baseline', 'f8')
-            ])
-            data = models.require_columns(data, expected_dtype)
-            ranges = astropy.table.QTable(data[...], copy=False)
-            ranges['min_frequency'] <<= u.Hz
-            ranges['max_frequency'] <<= u.Hz
-            ranges['max_baseline'] <<= u.m
-            return cls(ranges)
+        try:
+            data = hdf5['/ranges']
+            if isinstance(data, h5py.Group):
+                raise KeyError        # It should be a dataset, not a group
+        except KeyError:
+            raise models.DataError('Model is missing ranges dataset') from None
+        if data.ndim != 1:
+            raise models.DataError(f'ranges dataset should have 1 dimension, found {data.ndim}')
+        expected_dtype = np.dtype([
+            ('min_frequency', 'f8'),
+            ('max_frequency', 'f8'),
+            ('max_baseline', 'f8')
+        ])
+        data = models.require_columns(data, expected_dtype)
+        ranges = astropy.table.QTable(data[...], copy=False)
+        ranges['min_frequency'] <<= u.Hz
+        ranges['max_frequency'] <<= u.Hz
+        ranges['max_baseline'] <<= u.m
+        return cls(ranges)

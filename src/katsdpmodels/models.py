@@ -17,14 +17,17 @@
 """Base functionality common to all model types."""
 
 from abc import ABC, abstractmethod
-from typing import Optional, Union, Any, ClassVar, Type, TypeVar
+import io
+import urllib
+import h5py
+from typing import BinaryIO, Optional, Union, Any, ClassVar, Type, TypeVar
 
 import numpy as np
-import h5py
 
 
 _E = TypeVar('_E', bound='ModelError')
 _M = TypeVar('_M', bound='Model')
+_H = TypeVar('_H', bound='SimpleHDF5Model')
 
 
 class ModelError(ValueError):
@@ -67,10 +70,10 @@ class TooManyAliasesError(ModelError):
 class Model(ABC):
     """Base class for models.
 
-    Models can either be loaded from instances of :class:`h5py.File` or
-    constructed directly. Models loaded by the fetcher store the checksum of
-    the raw data, and are considered equal if the checksums match. Otherwise,
-    equality is by object identity.
+    Models can either be loaded from file-like objects or constructed directly.
+    Models loaded by the fetcher store the checksum of the raw data, and are
+    considered equal if the checksums match. Otherwise, equality is by object
+    identity.
 
     Models loaded by the fetcher should not be modified, as they may be shared
     by other users. Instead, make a copy and modify that.
@@ -82,12 +85,14 @@ class Model(ABC):
 
     @classmethod
     @abstractmethod
-    def from_hdf5(cls: Type[_M], hdf5: h5py.File) -> _M:
+    def from_file(cls: Type[_M], file: BinaryIO, url: str) -> _M:
         """Load a model from raw data.
 
-        On success, the callee takes responsibility for closing `hdf5`, either
+        On success, the callee takes responsibility for closing `file`, either
         within the function itself or the :meth:`close` method of the returned
         model.
+
+        The `url` may be used to determine the file type.
         """
 
     def close(self) -> None:
@@ -116,6 +121,40 @@ class Model(ABC):
             return hash(self.checksum)
         else:
             return super().__hash__()
+
+
+class SimpleHDF5Model(Model):
+    """Helper base class for models that load data from HDF5.
+
+    It does not handle lazy loading: the :meth:`from_hdf5` class method must
+    load all the data out of the HDF5 file as it will be closed by the caller.
+    """
+
+    @classmethod
+    def from_file(cls: Type[_H], file: BinaryIO, url: str) -> _H:
+        """Load a model from raw data.
+
+        On success, the callee takes responsibility for closing `file`, either
+        within the function itself or the :meth:`close` method of the returned
+        model.
+
+        The `url` may be used to determine the file type.
+        """
+        with file:
+            parts = urllib.parse.urlparse(url)
+            if not parts.path.endswith(('.h5', '.hdf5')):
+                raise DataError(f'Filename extension not recognised in {url}')
+            with h5py.File(file, 'r') as hdf5:
+                model_type = ensure_str(hdf5.attrs.get('model_type', ''))
+                if model_type != cls.model_type:
+                    raise ModelTypeError(
+                        f'Expected a model of type {cls.model_type!r}, not {model_type!r}')
+                return cls.from_hdf5(hdf5)
+
+    @classmethod
+    @abstractmethod
+    def from_hdf5(cls: Type[_H], hdf5: h5py.File) -> _H:
+        """Load a model from an HDF5 file."""
 
 
 def ensure_str(s: Union[bytes, str]) -> str:
