@@ -25,8 +25,8 @@ from test_utils import get_data_url
 
 
 @pytest.fixture
-def ranges_model(mock_responses):
-    return fetch.fetch_model(get_data_url('rfi_mask_ranges.hdf5'), rfi_mask.RFIMask)
+def ranges_model(web_server):
+    return fetch.fetch_model(web_server('rfi_mask_ranges.hdf5'), rfi_mask.RFIMask)
 
 
 @pytest.mark.parametrize(
