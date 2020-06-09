@@ -47,6 +47,10 @@ class ModelError(ValueError):
         return exc
 
 
+class FileTypeError(ModelError):
+    """The file type (as determined by extension) was not recognised."""
+
+
 class ModelTypeError(ModelError):
     """The ``model_type`` attribute was missing or did not match the expected value."""
 
@@ -143,7 +147,7 @@ class SimpleHDF5Model(Model):
         with file:
             parts = urllib.parse.urlparse(url)
             if not parts.path.endswith(('.h5', '.hdf5')):
-                raise DataError(f'Filename extension not recognised in {url}')
+                raise FileTypeError(f'Filename extension not recognised in {url}')
             with h5py.File(file, 'r') as hdf5:
                 model_type = ensure_str(hdf5.attrs.get('model_type', ''))
                 if model_type != cls.model_type:

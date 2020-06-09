@@ -74,6 +74,15 @@ def test_fetch_model_cached_model_type_error(mock_responses, monkeypatch) -> Non
         assert exc_info.value.original_url == url
 
 
+def test_fetch_model_file_type_error(mock_responses) -> None:
+    url = get_data_url('wrong_extension.blah')
+    mock_responses.add(responses.GET, url, body=get_data('rfi_mask_ranges.hdf5'))
+    with pytest.raises(models.FileTypeError) as exc_info:
+        fetch.fetch_model(url, DummyModel)
+    assert exc_info.value.url == url
+    assert exc_info.value.original_url == url
+
+
 def test_fetch_model_not_hdf5(mock_responses) -> None:
     url = get_data_url('not_hdf5.hdf5')
     with pytest.raises(models.DataError) as exc_info:
