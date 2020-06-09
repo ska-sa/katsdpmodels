@@ -167,3 +167,11 @@ def test_custom_session(web_server) -> None:
         fetch.fetch_model(web_server('direct.alias'), DummyModel, session=session)
         assert session.calls == 2
         assert not session.closed
+
+
+def test_lazy(web_server) -> None:
+    with fetch.Fetcher() as fetcher:
+        model = fetcher.get(web_server('rfi_mask_ranges.hdf5'), DummyModel, lazy=True)
+        assert len(model.ranges) == 2
+        assert not model.is_closed
+    assert model.is_closed
