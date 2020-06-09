@@ -15,12 +15,13 @@
 ################################################################################
 
 import contextlib
+import errno
 import io
 import hashlib
 import re
 import logging
 import urllib.parse
-from typing import BinaryIO, Dict, Tuple, Optional, Mapping, Type, TypeVar, Any
+from typing import Dict, Tuple, Optional, Type, TypeVar, Any, cast
 from typing_extensions import Protocol
 
 import requests
@@ -38,9 +39,73 @@ _M = TypeVar('_M', bound='models.Model')
 class Session(Protocol):
     """Generalization of :class:`requests.Session`."""
 
-    def get(self, url: str, *, headers: Optional[Mapping[str, str]] = None) -> requests.Response: ...   # pragma: nocover  # noqa: E501
-    def head(self, url: str, *, headers: Optional[Mapping[str, str]] = None) -> requests.Response: ...  # pragma: nocover  # noqa: E501
-    def close(self) -> None: ...                          # pragma: nocover
+    def get(self, url: str, **kwargs) -> requests.Response: ...   # pragma: nocover
+    def head(self, url: str, **kwargs) -> requests.Response: ...  # pragma: nocover
+    def close(self) -> None: ...                                  # pragma: nocover
+
+
+class HttpFile(io.RawIOBase):
+    """File-like object that fetches byte ranges via HTTP."""
+
+    def __init__(self, session: Session, url: str) -> None:
+        self._session = session
+        self._offset = 0
+        with session.head(url) as resp:
+            resp.raise_for_status()
+            if resp.headers.get('Accept-Ranges', 'none') != 'bytes':
+                raise OSError('Server does not accept byte ranges')
+            try:
+                self._length = int(resp.headers['Content-Length'])
+            except (KeyError, ValueError):
+                raise OSError('Server did not provide Content-Length header') from None
+            # TODO: consider storing ETag/Last-Modified to check for data
+            # changing under us.
+            self._url = resp.url
+
+    @property
+    def url(self) -> str:
+        return self._url
+
+    def seek(self, offset: int, whence: int = io.SEEK_SET) -> int:
+        if whence == io.SEEK_SET:
+            new_offset = offset
+        elif whence == io.SEEK_CUR:
+            new_offset = self._offset + offset
+        elif whence == io.SEEK_END:
+            new_offset = self._length + offset
+        else:
+            raise ValueError(f'invalid whence ({whence}, should be 0, 1 or 2)')
+        if new_offset < 0:
+            raise OSError(errno.EINVAL, 'Invalid argument')
+        self._offset = new_offset
+        return new_offset
+
+    def tell(self) -> int:
+        return self._offset
+
+    def readinto(self, b) -> int:
+        start = min(self._length, self._offset)
+        end = min(self._length, start + len(b)) - 1    # End is inclusive
+        with self._session.get(
+                self._url,
+                headers={'Range': f'bytes={start}-{end}'},
+                stream=True) as resp:
+            resp.raise_for_status()
+            content_range = resp.headers.get('Content-Range', '')
+            # RFC 7233 specifies the format
+            match = re.fullmatch(r'bytes (\d+)-(\d+)/(?:\*|\d+)', content_range)
+            if (resp.status_code != requests.codes.PARTIAL_CONTENT or not match
+                    or int(match.group(1)) != start or int(match.group(2)) != end):
+                # Tornado does not send partial content if the entire content
+                # was requested, so allow that case.
+                if start != 0 or end != self._length - 1:
+                    raise OSError('Did not receive expected byte range')
+            bytes_read = resp.raw.readinto(b)
+            self._offset += bytes_read
+            return bytes_read
+
+    def close(self) -> None:
+        super().close()
 
 
 class Fetcher:
@@ -142,7 +207,7 @@ class Fetcher:
             parts = urllib.parse.urlparse(url)
         return url
 
-    def _get_eager(self, url: str) -> Tuple[BinaryIO, str, str]:
+    def _get_eager(self, url: str) -> Tuple[io.IOBase, str, str]:
         with self._session.get(url) as resp:
             resp.raise_for_status()
             data = resp.content
@@ -153,12 +218,13 @@ class Fetcher:
         if match:
             if checksum != match.group(1):
                 raise models.ChecksumError('Content did not match checksum in URL')
-        return io.BytesIO(data), url, checksum
+        # typeshed doesn't reflect that BytesIO inherits from BufferedIOBase
+        # (fixed in master, but not in mypy 0.780).
+        return cast(io.IOBase, io.BytesIO(data)), url, checksum
 
-    def _get_lazy(self, url: str) -> Tuple[BinaryIO, str]:
-        # TODO: implement
-        fh, url, _ = self._get_eager(url)
-        return fh, url
+    def _get_lazy(self, url: str) -> Tuple[io.IOBase, str]:
+        fh = HttpFile(self._session, url)
+        return fh, fh.url
 
     def get(self, url: str, model_class: Type[_M], *,
             lazy: bool = False) -> _M:

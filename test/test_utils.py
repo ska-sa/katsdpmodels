@@ -16,7 +16,6 @@
 
 """Utilities for other tests."""
 
-import io
 import os
 import pathlib
 import urllib.parse

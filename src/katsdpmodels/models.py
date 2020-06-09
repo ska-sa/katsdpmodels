@@ -20,7 +20,7 @@ from abc import ABC, abstractmethod
 import io
 import urllib
 import h5py
-from typing import BinaryIO, Optional, Union, Any, ClassVar, Type, TypeVar
+from typing import Optional, Union, Any, ClassVar, Type, TypeVar
 
 import numpy as np
 
@@ -89,7 +89,7 @@ class Model(ABC):
 
     @classmethod
     @abstractmethod
-    def from_file(cls: Type[_M], file: BinaryIO, url: str) -> _M:
+    def from_file(cls: Type[_M], file: io.IOBase, url: str) -> _M:
         """Load a model from raw data.
 
         On success, the callee takes responsibility for closing `file`, either
@@ -135,7 +135,7 @@ class SimpleHDF5Model(Model):
     """
 
     @classmethod
-    def from_file(cls: Type[_H], file: BinaryIO, url: str) -> _H:
+    def from_file(cls: Type[_H], file: io.IOBase, url: str) -> _H:
         """Load a model from raw data.
 
         On success, the callee takes responsibility for closing `file`, either

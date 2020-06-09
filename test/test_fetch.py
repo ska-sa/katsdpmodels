@@ -18,7 +18,6 @@
 
 import contextlib
 import hashlib
-from typing import Mapping, Optional
 
 import h5py
 import pytest
@@ -157,13 +156,13 @@ class DummySession:
         self.closed = False
         self.calls = 0
 
-    def get(self, url: str, *, headers: Optional[Mapping[str, str]] = None) -> requests.Response:
+    def get(self, url: str, **kwargs) -> requests.Response:
         self.calls += 1
-        return self._session.get(url, headers=headers)
+        return self._session.get(url, **kwargs)
 
-    def head(self, url: str, *, headers: Optional[Mapping[str, str]] = None) -> requests.Response:
+    def head(self, url: str, **kwargs) -> requests.Response:
         self.calls += 1
-        return self._session.head(url, headers=headers)
+        return self._session.head(url, **kwargs)
 
     def close(self) -> None:
         self._session.close()
