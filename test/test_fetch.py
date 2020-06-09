@@ -32,8 +32,10 @@ from test_utils import get_data, get_data_url, get_file_url, DummyModel
 @pytest.mark.parametrize('filename', ['rfi_mask_ranges.hdf5', 'direct.alias', 'indirect.alias'])
 def test_fetch_model_simple(url_gen, filename, mock_responses) -> None:
     url = url_gen(filename)
-    model = fetch.fetch_model(url, DummyModel)
-    assert len(model.ranges) == 2
+    with fetch.fetch_model(url, DummyModel) as model:
+        assert len(model.ranges) == 2
+        assert not model.is_closed
+    assert model.is_closed
 
 
 def test_fetch_model_alias_loop(mock_responses) -> None:
@@ -84,8 +86,8 @@ def test_fetch_model_checksum_ok(mock_responses) -> None:
     digest = hashlib.sha256(data).hexdigest()
     url = get_data_url(f'sha256_{digest}.hdf5')
     mock_responses.add(responses.GET, url, body=data)
-    model = fetch.fetch_model(url, DummyModel)
-    assert model.checksum == digest
+    with fetch.fetch_model(url, DummyModel) as model:
+        assert model.checksum == digest
 
 
 def test_fetch_model_checksum_bad(mock_responses) -> None:
@@ -117,8 +119,8 @@ def test_fetch_model_bad_http_status(filename, mock_responses) -> None:
 def test_fetch_model_http_redirect(mock_responses) -> None:
     url = get_data_url('subdir/redirect.alias')
     mock_responses.add(responses.GET, url, headers={'Location': '../direct.alias'}, status=307)
-    model = fetch.fetch_model(url, DummyModel)
-    assert len(model.ranges) == 2
+    with fetch.fetch_model(url, DummyModel) as model:
+        assert len(model.ranges) == 2
 
 
 def test_fetch_model_connection_error(mock_responses) -> None:
@@ -132,19 +134,11 @@ def test_fetcher_caching(mock_responses) -> None:
         model1 = fetcher.get(get_data_url('rfi_mask_ranges.hdf5'), DummyModel)
         model2 = fetcher.get(get_data_url('indirect.alias'), DummyModel)
         model3 = fetcher.get(get_data_url('direct.alias'), DummyModel)
-    assert model1 is model2
-    assert model1 is model3
+        assert model1 is model2
+        assert model1 is model3
+        assert not model1.is_closed
     assert len(mock_responses.calls) == 3
-
-
-def test_fetch_models(mock_responses) -> None:
-    models = fetch.fetch_models(
-        [get_data_url('rfi_mask_ranges.hdf5'), get_data_url('indirect.alias')],
-        DummyModel)
-    assert len(models) == 2
-    assert models[0] is models[1]
-    assert len(models[0].ranges) == 2
-    assert len(mock_responses.calls) == 3
+    assert model1.is_closed
 
 
 class DummySession:

@@ -14,12 +14,13 @@
 # limitations under the License.
 ################################################################################
 
+import contextlib
 import io
 import hashlib
 import re
 import logging
 import urllib.parse
-from typing import Dict, List, Iterable, Optional, Type, TypeVar, Any
+from typing import Dict, Optional, Type, TypeVar, Any
 from typing_extensions import Protocol
 
 import h5py
@@ -50,7 +51,9 @@ class Fetcher:
     out to be aliases of each other.
 
     It should be closed with :meth:`close` when no longer in use. It also
-    implements the context manager protocol for this purpose.
+    implements the context manager protocol for this purpose. This will close
+    the retrieved models, so must only be done once the models are no longer in
+    use.
 
     This class is *not* thread-safe.
 
@@ -66,6 +69,17 @@ class Fetcher:
         It need not be an instance of :class:`requests.Session`; one can
         create any class as long as it implements the :class:`Session`
         protocol.
+
+    Attributes
+    ----------
+    close_models
+        If true (the default), the cached models will be closed when the
+        fetcher is closed. If set to false, the user must close the models.
+        This is only intended for use by :func:`fetch_model`.
+    close_session
+        If true, the session used for HTTP requests will be closed when the
+        fetch is closed. It defaults to true if an internally-created session
+        is used, and false if the user provided a session.
 
     Raises
     ------
@@ -83,17 +97,25 @@ class Fetcher:
             # open the file directly with h5py rather than sucking it into a
             # BytesIO.
             self._session.mount('file://', requests_file.FileAdapter())
-            self._close_session = True
+            self.close_session = True
         else:
             self._session = session
-            self._close_session = False
+            self.close_session = False
         self._alias_cache: Dict[str, str] = {}
         self._model_cache: Dict[str, models.Model] = {}
+        self.close_models = True
+
+    @property
+    def session(self) -> Session:
+        return self._session
 
     def close(self) -> None:
-        if self._close_session:
+        if self.close_session:
             self._session.close()
         self._alias_cache.clear()
+        if self.close_models:
+            for model in self._model_cache.values():
+                model.close()
         self._model_cache.clear()
 
     def resolve(self, url: str) -> str:
@@ -121,6 +143,13 @@ class Fetcher:
         return url
 
     def get(self, url: str, model_class: Type[_M]) -> _M:
+        """Retrieve a single model.
+
+        The caller must *not* close the retrieved model, as it is cached and
+        a future request for the model would return the closed model. Instead,
+        the caller must close the fetcher once it no longer needs any of the
+        models.
+        """
         original_url = url
         url = self.resolve(url)
         if url in self._model_cache:
@@ -148,13 +177,16 @@ class Fetcher:
                     url=url, original_url=original_url)
 
         try:
-            with h5py.File(io.BytesIO(data), 'r') as hdf5:
+            with contextlib.ExitStack() as exit_stack:
+                hdf5 = h5py.File(io.BytesIO(data), 'r')
+                exit_stack.callback(hdf5.close)
                 model_type = models.ensure_str(hdf5.attrs.get('model_type', ''))
                 if model_type != model_class.model_type:
                     raise models.ModelTypeError.with_urls(
                         f'Expected a model of type {model_class.model_type!r}, not {model_type!r}',
                         url=url, original_url=original_url)
                 new_model = model_class.from_hdf5(hdf5)
+                exit_stack.pop_all()   # new_model now owns hdf5
         except models.ModelError as exc:
             exc.original_url = original_url
             exc.url = url
@@ -176,11 +208,12 @@ class Fetcher:
 
 def fetch_model(url: str, model_class: Type[_M], *,
                 session: Optional[Session] = None) -> _M:
+    """Convenience function for retrieving a single model.
+
+    This should only be used when loading just a single model. If multiple
+    models will be used instead, construct an instance of :class:`Fetcher`
+    and use it to fetch models.
+    """
     with Fetcher(session=session) as fetcher:
+        fetcher.close_models = False
         return fetcher.get(url, model_class)
-
-
-def fetch_models(urls: Iterable[str], model_class: Type[_M], *,
-                 session: Optional[Session] = None) -> List[_M]:
-    with Fetcher(session=session) as fetcher:
-        return [fetcher.get(url, model_class) for url in urls]

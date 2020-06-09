@@ -83,7 +83,25 @@ class Model(ABC):
     @classmethod
     @abstractmethod
     def from_hdf5(cls: Type[_M], hdf5: h5py.File) -> _M:
-        """Load a model from raw data."""
+        """Load a model from raw data.
+
+        On success, the callee takes responsibility for closing `hdf5`, either
+        within the function itself or the :meth:`close` method of the returned
+        model.
+        """
+
+    def close(self) -> None:
+        """Close external resources associated with the model.
+
+        Attempting to use the model after that results in undefined behavior.
+        However, it is legal to call :meth:`close` multiple times.
+        """
+
+    def __enter__(self: _M) -> _M:
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        self.close()
 
     def __eq__(self, other: object) -> Any:
         if not isinstance(other, Model):

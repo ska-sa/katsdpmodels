@@ -50,7 +50,13 @@ class DummyModel(models.Model):
 
     def __init__(self, ranges: Any) -> None:
         self.ranges = ranges
+        self.is_closed = False
 
     @classmethod
     def from_hdf5(cls, hdf5: h5py.File) -> 'DummyModel':
-        return cls(hdf5['/ranges'][:])
+        with hdf5:
+            return cls(hdf5['/ranges'][:])
+
+    def close(self) -> None:
+        super().close()
+        self.is_closed = True
