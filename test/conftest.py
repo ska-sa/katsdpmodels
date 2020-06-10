@@ -25,7 +25,9 @@ from typing import Tuple, Callable, Generator
 
 import pytest
 import responses
-import aiohttp.web
+import tornado.httpserver
+import tornado.netutil
+import tornado.web
 
 import test_utils
 
@@ -58,20 +60,21 @@ def web_server() -> Generator[Callable[[str], str], None, None]:
     """
 
     async def server_coro(info_future: 'concurrent.futures.Future[_Info]') -> None:
-        data_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data')
-        app = aiohttp.web.Application()
-        app.add_routes([aiohttp.web.static('/data', data_dir)])
-        runner = aiohttp.web.AppRunner(app)
-        await runner.setup()
-        sock = socket.socket()
-        sock.bind(('127.0.0.1', 0))   # Allocate an available port
-        site = aiohttp.web.SockSite(runner, sock)
-        await site.start()
-        finished_event = asyncio.Event()
-        data_url = urllib.parse.urljoin(site.name, '/data/')
-        info_future.set_result((asyncio.get_event_loop(), finished_event, data_url))
-        await finished_event.wait()
-        await runner.cleanup()
+        try:
+            data_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data')
+            app = tornado.web.Application([], static_path=data_dir)
+            sockets = tornado.netutil.bind_sockets(0, '127.0.0.1')
+            port = sockets[0].getsockname()[1]
+            server = tornado.httpserver.HTTPServer(app)
+            server.add_sockets(sockets)
+            server.start()
+            finished_event = asyncio.Event()
+            data_url = f'http://127.0.0.1:{port}/static/'
+            info_future.set_result((asyncio.get_event_loop(), finished_event, data_url))
+            await finished_event.wait()
+            server.stop()
+        except Exception as exc:
+            info_future.set_exception(exc)
 
     def server_thread(info_future: 'concurrent.futures.Future[_Info]') -> None:
         loop = asyncio.new_event_loop()

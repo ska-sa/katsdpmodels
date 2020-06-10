@@ -102,6 +102,12 @@ class HttpFile(io.RawIOBase):
                     raise OSError('Did not receive expected byte range')
             bytes_read = resp.raw.readinto(b)
             self._offset += bytes_read
+            with open('readinto.log', 'a') as f:
+                print(f'headers: {resp.headers}', file=f)
+                print(f'range: {start}-{end}', file=f)
+                expected = end - start + 1
+                print(f'received: {bytes_read} / {expected}', file=f)
+                print(file=f)
             return bytes_read
 
     def close(self) -> None:

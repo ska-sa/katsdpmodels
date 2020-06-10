@@ -1,19 +1,13 @@
-aiohttp
-async-timeout                   # via aiohttp
-attrs                           # via pytest, aiohttp
-chardet                         # via aiohttp
+attrs                           # via pytest
 coverage
-idna-ssl                        # via aiohttp
 importlib-metadata              # via pytest
 more-itertools                  # via pytest
-multidict                       # via aiohttp
 packaging                       # via pytest
 pluggy                          # via pytest
 py                              # via pytest
 pytest
 pytest-cov
 responses==0.10.14
-typing-extensions               # via aiohttp
+tornado
 wcwidth                         # via pytest
-yarl                            # via aiohttp
-zipp                            # via importlib
+zipp                            # via importlib-metadata
