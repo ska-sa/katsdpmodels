@@ -18,7 +18,6 @@ import asyncio
 import concurrent.futures
 import os
 import pathlib
-import socket
 import threading
 import urllib.parse
 from typing import Tuple, Callable, Generator
