@@ -36,3 +36,8 @@ rfi_mask_ranges_is_group.hdf5
     There is a group called ``ranges`` rather than a dataset.
 wrong_extension.blah
     Copy of rfi_mask_ranges.hdf5 with a different extension.
+
+Other
+-----
+all_bytes.bin
+    Byte values running from 0 to 255.

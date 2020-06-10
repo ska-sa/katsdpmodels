@@ -18,6 +18,7 @@
 
 import contextlib
 import hashlib
+import io
 
 import h5py
 import pytest
@@ -26,6 +27,46 @@ import responses
 
 from katsdpmodels import models, fetch
 from test_utils import get_data, get_data_url, get_file_url, DummyModel
+
+
+@pytest.fixture
+def http_file(web_server):
+    with requests.Session() as session:
+        with fetch.HttpFile(session, web_server('all_bytes.bin')) as file:
+            yield file
+
+
+def test_http_file_seek_tell(http_file):
+    assert http_file.tell() == 0
+    http_file.seek(10, io.SEEK_SET)
+    assert http_file.tell() == 10
+    assert http_file.read(2) == b'\x0A\x0B'
+    assert http_file.tell() == 12
+    http_file.seek(5)
+    assert http_file.tell() == 5
+    http_file.seek(5, io.SEEK_CUR)
+    assert http_file.tell() == 10
+    http_file.seek(-5, io.SEEK_CUR)
+    assert http_file.tell() == 5
+    http_file.seek(-10, io.SEEK_END)
+    assert http_file.tell() == 246
+
+
+def test_http_file_close(http_file):
+    assert not http_file.closed
+    http_file.close()
+    assert http_file.closed
+    http_file.close()
+    assert http_file.closed
+
+
+def test_http_file_read(http_file):
+    assert http_file.read(2) == b'\x00\x01'
+    assert http_file.read(3) == b'\x02\x03\x04'
+    http_file.seek(-2, io.SEEK_END)
+    # Short read at end of file
+    assert http_file.read(4) == b'\xFE\xFF'
+    assert http_file.tell() == 256
 
 
 @pytest.mark.parametrize('use_file', [True, False])
