@@ -20,6 +20,7 @@ import io
 import hashlib
 import re
 import logging
+import os
 import urllib.parse
 from typing import Dict, Tuple, Optional, Type, TypeVar, Any, cast
 from typing_extensions import Protocol
@@ -51,13 +52,17 @@ class HttpFile(io.RawIOBase):
         self._session = session
         self._offset = 0
         with session.head(url) as resp:
+            if resp.status_code == 404:
+                raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), url)
+            elif resp.status_code in {401, 403}:
+                raise PermissionError(errno.EACCES, os.strerror(errno.EACCES), url)
             resp.raise_for_status()
             if resp.headers.get('Accept-Ranges', 'none') != 'bytes':
-                raise OSError('Server does not accept byte ranges')
+                raise OSError(None, 'Server does not accept byte ranges', url)
             try:
                 self._length = int(resp.headers['Content-Length'])
             except (KeyError, ValueError):
-                raise OSError('Server did not provide Content-Length header') from None
+                raise OSError(None, 'Server did not provide Content-Length header', url) from None
             # TODO: consider storing ETag/Last-Modified to check for data
             # changing under us.
             self._url = resp.url
