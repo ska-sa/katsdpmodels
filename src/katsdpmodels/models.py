@@ -17,12 +17,14 @@
 """Base functionality common to all model types."""
 
 from abc import ABC, abstractmethod
+from datetime import datetime, timezone
 import io
 import urllib
 import h5py
-from typing import Optional, Union, Any, ClassVar, Type, TypeVar
+from typing import Optional, Union, Any, ClassVar, Type, TypeVar, overload
 
 import numpy as np
+import strict_rfc3339
 
 
 _E = TypeVar('_E', bound='ModelError')
@@ -86,6 +88,10 @@ class Model(ABC):
     model_type: ClassVar[str]
     model_format: ClassVar[str]
     checksum: Optional[str] = None
+    target: Optional[str] = None
+    comment: Optional[str] = None
+    author: Optional[str] = None
+    created: Optional[datetime] = None
 
     @classmethod
     @abstractmethod
@@ -149,11 +155,26 @@ class SimpleHDF5Model(Model):
             if not parts.path.endswith(('.h5', '.hdf5')):
                 raise FileTypeError(f'Filename extension not recognised in {url}')
             with h5py.File(file, 'r') as hdf5:
-                model_type = ensure_str(hdf5.attrs.get('model_type', ''))
+                model_type = ensure_str(hdf5.attrs.get('model_type'))
                 if model_type != cls.model_type:
                     raise ModelTypeError(
                         f'Expected a model of type {cls.model_type!r}, not {model_type!r}')
-                return cls.from_hdf5(hdf5)
+                model = cls.from_hdf5(hdf5)
+                try:
+                    model.comment = ensure_str(hdf5.attrs.get('model_comment'))
+                    model.target = ensure_str(hdf5.attrs.get('model_target'))
+                    model.author = ensure_str(hdf5.attrs.get('model_author'))
+                    created = ensure_str(hdf5.attrs.get('model_created'))
+                    if created is not None:
+                        try:
+                            model.created = rfc3339_to_datetime(created)
+                        except ValueError as exc:
+                            raise DataError(f'Invalid creation timestamp {created!r}') from None
+                except Exception:
+                    model.close()
+                    raise
+                else:
+                    return model
 
     @classmethod
     @abstractmethod
@@ -161,24 +182,38 @@ class SimpleHDF5Model(Model):
         """Load a model from an HDF5 file."""
 
 
-def ensure_str(s: Union[bytes, str]) -> str:
+@overload
+def ensure_str(s: None) -> None: ...
+@overload
+def ensure_str(s: Union[bytes, str]) -> str: ...
+
+def ensure_str(s):
     """Decode bytes to string if necessary.
 
-    This is provided to work around for https://github.com/h5py/h5py/issues/379.
+    This is provided to work around for
+    https://github.com/h5py/h5py/issues/379. For convenience, ``None`` can
+    also be passed.
 
     Raises
     ------
     TypeError
-        if `s` is neither :class:`bytes` nor :class:`str`.
+        if `s` is not :class:`bytes`, :class:`str` or ``None``.
     UnicodeDecodeError
         if `s` is :class:`bytes` and is not valid UTF-8.
     """
-    if isinstance(s, str):
+    if s is None:
+        return s
+    elif isinstance(s, str):
         return s
     elif isinstance(s, bytes):
         return s.decode('utf-8')
     else:
         raise TypeError('Expected bytes or str, received {}'.format(type(s)))
+
+
+def rfc3339_to_datetime(timestamp: str) -> datetime:
+    unix_time = strict_rfc3339.rfc3339_to_timestamp(timestamp)
+    return datetime.fromtimestamp(unix_time, timezone.utc)
 
 
 def require_columns(array: Any, dtype: np.dtype) -> Any:

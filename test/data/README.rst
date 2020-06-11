@@ -8,6 +8,8 @@ Working models
 rfi_mask_ranges.hdf5
     RFI mask with two ranges, one with finite and one with infinite
     max_baseline_length.
+rfi_mask_ranges_metadata.hdf5
+    Same as above with the addition of model_comment, model_author etc.
 
 Aliases
 -------

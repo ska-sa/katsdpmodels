@@ -26,7 +26,8 @@ from test_utils import get_data_url
 
 @pytest.fixture
 def ranges_model(web_server):
-    return fetch.fetch_model(web_server('rfi_mask_ranges.hdf5'), rfi_mask.RFIMask)
+    with fetch.fetch_model(web_server('rfi_mask_ranges.hdf5'), rfi_mask.RFIMask) as model:
+        yield model
 
 
 @pytest.mark.parametrize(
@@ -106,3 +107,11 @@ def test_bad_model_format(mock_responses):
     with pytest.raises(models.ModelFormatError) as exc_info:
         fetch.fetch_model(url, rfi_mask.RFIMask)
     assert str(exc_info.value) == "Unknown model_format 'not_ranges' for rfi_mask"
+
+
+def test_metadata(web_server):
+    with fetch.fetch_model(web_server('rfi_mask_ranges_metadata.hdf5'), rfi_mask.RFIMask) as model:
+        assert model.comment == 'Test model'
+        assert model.author == 'Test author'
+        assert model.target == 'Test target'
+        assert model.created.isoformat() == '2020-06-11T11:11:00+00:00'
