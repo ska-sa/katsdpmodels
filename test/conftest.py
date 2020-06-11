@@ -47,6 +47,7 @@ def mock_responses() -> Generator[responses.RequestsMock, None, None]:
                 with open(path, 'rb') as f:
                     data = f.read()
                 rsps.add(responses.GET, url, body=data)
+                rsps.add(responses.HEAD, url)
         yield rsps
 
 

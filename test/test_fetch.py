@@ -50,6 +50,10 @@ def test_http_file_seek_tell(http_file):
     assert http_file.tell() == 5
     http_file.seek(-10, io.SEEK_END)
     assert http_file.tell() == 246
+    with pytest.raises(ValueError):
+        http_file.seek(0, 17)
+    with pytest.raises(OSError):
+        http_file.seek(-10000, io.SEEK_END)
 
 
 def test_http_file_close(http_file):
@@ -67,6 +71,62 @@ def test_http_file_read(http_file):
     # Short read at end of file
     assert http_file.read(4) == b'\xFE\xFF'
     assert http_file.tell() == 256
+
+
+def test_http_file_not_found(web_server):
+    with requests.Session() as session:
+        with pytest.raises(FileNotFoundError) as exc_info:
+            fetch.HttpFile(session, web_server('does_not_exist'))
+    assert exc_info.value.filename == web_server('does_not_exist')
+
+
+def test_http_file_forbidden(mock_responses):
+    url = get_data_url('does_not_exist')
+    mock_responses.add(responses.HEAD, url, status=403)
+    with requests.Session() as session:
+        with pytest.raises(PermissionError) as exc_info:
+            fetch.HttpFile(session, url)
+    assert exc_info.value.filename == url
+
+
+def test_http_file_ranges_not_accepted(mock_responses):
+    url = get_data_url('rfi_mask_ranges.hdf5')
+    with requests.Session() as session:
+        with pytest.raises(OSError, match='Server does not accept byte ranges') as exc_info:
+            fetch.HttpFile(session, url)
+    assert exc_info.value.filename == url
+
+
+def test_http_file_no_content_length(mock_responses):
+    url = get_data_url('rfi_mask_ranges.hdf5')
+    mock_responses.replace(responses.HEAD, url, headers={'Accept-Ranges': 'bytes'})
+    with requests.Session() as session:
+        with pytest.raises(OSError,
+                           match='Server did not provide Content-Length header') as exc_info:
+            fetch.HttpFile(session, url)
+    assert exc_info.value.filename == url
+
+
+def test_http_file_range_ignored(mock_responses):
+    url = get_data_url('rfi_mask_ranges.hdf5')
+    data = get_data('rfi_mask_ranges.hdf5')
+    mock_responses.replace(
+        responses.HEAD, url,
+        headers={
+            'Accept-Ranges': 'bytes',
+            'Content-Length': str(len(data))
+        }
+    )
+    mock_responses.replace(responses.GET, url, body=data, stream=True)
+    with requests.Session() as session:
+        with fetch.HttpFile(session, url) as file:
+            with pytest.raises(OSError, match='Did not receive expected byte range'):
+                file.read(10)
+            # Reading the whole file should work even if the server doesn't send
+            # back partial content.
+            file.seek(0)
+            test_data = file.read(len(data))
+            assert test_data == data
 
 
 @pytest.mark.parametrize('use_file', [True, False])
@@ -201,6 +261,15 @@ class DummySession:
     def close(self) -> None:
         self._session.close()
         self.closed = True
+
+
+def test_fetcher_custom_session(web_server) -> None:
+    with contextlib.closing(DummySession()) as session:
+        with fetch.Fetcher(session=session) as fetcher:
+            assert fetcher.session is session
+            fetcher.get(web_server('direct.alias'), DummyModel)
+        assert session.calls == 2
+        assert not session.closed
 
 
 def test_custom_session(web_server) -> None:
