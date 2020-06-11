@@ -19,7 +19,7 @@
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 import io
-import urllib
+import urllib.parse
 import h5py
 from typing import Optional, Union, Any, ClassVar, Type, TypeVar, overload
 
@@ -168,7 +168,7 @@ class SimpleHDF5Model(Model):
                     if created is not None:
                         try:
                             model.created = rfc3339_to_datetime(created)
-                        except ValueError as exc:
+                        except ValueError:
                             raise DataError(f'Invalid creation timestamp {created!r}') from None
                 except Exception:
                     model.close()
@@ -186,6 +186,7 @@ class SimpleHDF5Model(Model):
 def ensure_str(s: None) -> None: ...
 @overload
 def ensure_str(s: Union[bytes, str]) -> str: ...
+
 
 def ensure_str(s):
     """Decode bytes to string if necessary.
