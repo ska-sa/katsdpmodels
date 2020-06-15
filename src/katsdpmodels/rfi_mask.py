@@ -16,7 +16,6 @@
 
 """Masks for radio-frequency interference."""
 
-from abc import abstractmethod
 from typing import Type, TypeVar, ClassVar
 from typing_extensions import Literal
 
@@ -34,7 +33,9 @@ _R = TypeVar('_R', bound='RFIMaskRanges')
 class RFIMask(models.SimpleHDF5Model):
     model_type: ClassVar[Literal['rfi_mask']] = 'rfi_mask'
 
-    @abstractmethod
+    # Methods are not marked @abstractmethod as it causes issues with mypy:
+    # https://github.com/python/mypy/issues/4717
+
     def is_masked(self, frequency: u.Quantity, baseline_length: u.Quantity):
         """Determine whether given frequency is masked for the given baseline length.
 
@@ -42,8 +43,8 @@ class RFIMask(models.SimpleHDF5Model):
         are scalar) or an array of boolean if they're arrays, with the usual
         broadcasting rules applying.
         """
+        raise NotImplementedError()      # pragma: nocover
 
-    @abstractmethod
     def max_baseline_length(self, frequency: u.Quantity):
         """Determine maximum baseline length for which data at `frequency` should be masked.
 
@@ -51,6 +52,7 @@ class RFIMask(models.SimpleHDF5Model):
         at all baseline lengths, returns +inf. One may also supply an array of
         frequencies and receive an array of responses.
         """
+        raise NotImplementedError()      # pragma: nocover
 
     @classmethod
     def from_hdf5(cls, hdf5: h5py.File) -> 'RFIMask':
