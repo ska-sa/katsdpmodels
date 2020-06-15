@@ -14,6 +14,8 @@
 # limitations under the License.
 ################################################################################
 
+"""Fetch models over HTTP."""
+
 import contextlib
 import errno
 import io
@@ -46,11 +48,27 @@ class Session(Protocol):
 
 
 class HttpFile(io.RawIOBase):
-    """File-like object that fetches byte ranges via HTTP."""
+    """File-like object that fetches byte ranges via HTTP.
+
+    This requires the server to advertise for support byte-range requests and
+    to provide a Content-Length. It is currently *not* robust against the
+    content changing.
+
+    Raises
+    ------
+    FileNotFoundError
+        HTTP 404 error
+    PermissionError
+        HTTP 403 error
+    OSError
+        Other HTTP errors, or the server doesn't implement the required features.
+    """
 
     def __init__(self, session: Session, url: str) -> None:
         self._session = session
         self._offset = 0
+        # TODO do we need to set Accept-Encoding: none? Not sure how transfer
+        # encoding interact with byte ranges.
         with session.head(url) as resp:
             if resp.status_code == 404:
                 raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), url)
@@ -69,6 +87,10 @@ class HttpFile(io.RawIOBase):
 
     @property
     def url(self) -> str:
+        """The actual URL with the content.
+
+        This may differ from the constructor argument if HTTP redirects occurred.
+        """
         return self._url
 
     def seek(self, offset: int, whence: int = io.SEEK_SET) -> int:
@@ -116,9 +138,9 @@ class HttpFile(io.RawIOBase):
 class Fetcher:
     """Fetches and caches models.
 
-    It caches every URL it fetches, so it should not be held for a long time.
-    It is best suited to fetching a batch of models, some of which may be turn
-    out to be aliases of each other.
+    It caches every URL it fetches (ignoring any cache control headers), so it
+    should not be reused over a long time.  It is best suited to fetching a
+    batch of models, some of which may turn out to be aliases of each other.
 
     It should be closed with :meth:`close` when no longer in use. It also
     implements the context manager protocol for this purpose. This will close
@@ -148,7 +170,7 @@ class Fetcher:
         This is only intended for use by :func:`fetch_model`.
     close_session
         If true, the session used for HTTP requests will be closed when the
-        fetch is closed. It defaults to true if an internally-created session
+        fetcher is closed. It defaults to true if an internally-created session
         is used, and false if the user provided a session.
 
     Raises
@@ -180,6 +202,12 @@ class Fetcher:
         return self._session
 
     def close(self) -> None:
+        """Release the resources associated with the fetcher.
+
+        See also
+        --------
+        :attr:`close_session`, :attr:`close_models`
+        """
         if self.close_session:
             self._session.close()
         self._alias_cache.clear()
@@ -260,6 +288,14 @@ class Fetcher:
             3. The checksum stored in the filename is not validated.
             4. If the model is already in the cache, the laziness setting is
                ignored and the cached model is returned.
+            5. It does not work with ``file://`` URLs.
+
+        Raises
+        ------
+        .ModelError
+            If there are high-level errors with the model.
+        requests.exception.RequestException
+            Any exceptions raised by the underlying session.
         """
         original_url = url
         url = self.resolve(url)
@@ -315,7 +351,8 @@ def fetch_model(url: str, model_class: Type[_M], *,
 
     This should only be used when loading just a single model. If multiple
     models will be used instead, construct an instance of :class:`Fetcher`
-    and use it to fetch models.
+    and use it to fetch models, as this will allow models that turn out to be
+    the same to be shared.
     """
     with Fetcher(session=session) as fetcher:
         fetcher.close_models = False

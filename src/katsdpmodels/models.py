@@ -83,6 +83,14 @@ class Model(ABC):
 
     Models loaded by the fetcher should not be modified, as they may be shared
     by other users. Instead, make a copy and modify that.
+
+    Subclassing should generally be done in two layers:
+
+    1. A class that defines `model_type` and defines the interface for that
+       model type. This will be passed to :class:`.Fetcher` to indicate what
+       model type is expected. Due to limitations in mypy, this should not
+       use ``@abstractmethod`` for the interface methods.
+    2. A concrete implementation that defines `model_format`.
     """
 
     model_type: ClassVar[str]
@@ -110,6 +118,8 @@ class Model(ABC):
 
         Attempting to use the model after that results in undefined behavior.
         However, it is legal to call :meth:`close` multiple times.
+
+        Models also implement the context manager protocol.
         """
 
     def __enter__(self: _M) -> _M:
@@ -138,18 +148,12 @@ class SimpleHDF5Model(Model):
 
     It does not handle lazy loading: the :meth:`from_hdf5` class method must
     load all the data out of the HDF5 file as it will be closed by the caller.
+    The implementation of :meth:`from_hdf5` does not need to pull out the
+    generic metadata (comment, target, author, created).
     """
 
     @classmethod
     def from_file(cls: Type[_H], file: io.IOBase, url: str) -> _H:
-        """Load a model from raw data.
-
-        On success, the callee takes responsibility for closing `file`, either
-        within the function itself or the :meth:`close` method of the returned
-        model.
-
-        The `url` may be used to determine the file type.
-        """
         with file:
             parts = urllib.parse.urlparse(url)
             if not parts.path.endswith(('.h5', '.hdf5')):
@@ -179,7 +183,11 @@ class SimpleHDF5Model(Model):
     @classmethod
     @abstractmethod
     def from_hdf5(cls: Type[_H], hdf5: h5py.File) -> _H:
-        """Load a model from an HDF5 file."""
+        """Load a model from an HDF5 file.
+
+        Subclasses will implement this method, but it is not intended to be
+        used directly.
+        """
 
 
 @overload
@@ -213,6 +221,11 @@ def ensure_str(s):
 
 
 def rfc3339_to_datetime(timestamp: str) -> datetime:
+    """Convert a string in RFC 3339 format to a timezone-aware datetime object.
+
+    The original timezone in the string is lost, and the returned datetime is
+    based on UTC.
+    """
     unix_time = strict_rfc3339.rfc3339_to_timestamp(timestamp)
     return datetime.fromtimestamp(unix_time, timezone.utc)
 
