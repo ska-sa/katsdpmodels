@@ -64,12 +64,19 @@ class HttpFile(io.RawIOBase):
         Other HTTP errors, or the server doesn't implement the required features.
     """
 
+    # urllib3 by default sets this to gzip, deflate, but that won't play nice
+    # with byte ranges because we need byte ranges from the original file, not
+    # from the compressed representation.
+    _HEADERS = {
+        'Accept-Encoding': 'identity'
+    }
+
     def __init__(self, session: Session, url: str) -> None:
         self._session = session
         self._offset = 0
         # TODO do we need to set Accept-Encoding: none? Not sure how transfer
         # encoding interact with byte ranges.
-        with session.head(url) as resp:
+        with session.head(url, headers=self._HEADERS) as resp:
             if resp.status_code == 404:
                 raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), url)
             elif resp.status_code in {401, 403}:
@@ -115,7 +122,7 @@ class HttpFile(io.RawIOBase):
         end = min(self._length, start + len(b)) - 1    # End is inclusive
         with self._session.get(
                 self._url,
-                headers={'Range': f'bytes={start}-{end}'},
+                headers={'Range': f'bytes={start}-{end}', **self._HEADERS},
                 stream=True) as resp:
             resp.raise_for_status()
             content_range = resp.headers.get('Content-Range', '')
