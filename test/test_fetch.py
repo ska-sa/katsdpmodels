@@ -107,6 +107,46 @@ def test_http_file_no_content_length(mock_responses):
     assert exc_info.value.filename == url
 
 
+def test_http_file_content_encoding(mock_responses):
+    url = get_data_url('rfi_mask_ranges.hdf5')
+    mock_responses.replace(
+        responses.HEAD, url,
+        headers={
+            'Content-Length': str(len(get_data('rfi_mask_ranges.hdf5'))),
+            'Accept-Ranges': 'bytes',
+            'Content-Encoding': 'gzip'
+        }
+    )
+    with requests.Session() as session:
+        with pytest.raises(OSError,
+                           match='Server provided Content-Encoding header') as exc_info:
+            fetch.HttpFile(session, url)
+    assert exc_info.value.filename == url
+
+
+def test_http_file_content_encoding_get(mock_responses):
+    url = get_data_url('rfi_mask_ranges.hdf5')
+    mock_responses.replace(
+        responses.HEAD, url,
+        headers={
+            'Content-Length': str(len(get_data('rfi_mask_ranges.hdf5'))),
+            'Accept-Ranges': 'bytes'
+        }
+    )
+    mock_responses.replace(
+        responses.GET, url,
+        headers={
+            'Content-Length': str(len(get_data('rfi_mask_ranges.hdf5'))),
+            'Accept-Ranges': 'bytes',
+            'Content-Encoding': 'gzip'
+        }
+    )
+    with requests.Session() as session:
+        with fetch.HttpFile(session, url) as file:
+            with pytest.raises(OSError, match='Server provided Content-Encoding header'):
+                file.read()
+
+
 def test_http_file_range_ignored(mock_responses):
     url = get_data_url('rfi_mask_ranges.hdf5')
     data = get_data('rfi_mask_ranges.hdf5')

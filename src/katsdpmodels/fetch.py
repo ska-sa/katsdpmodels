@@ -84,6 +84,8 @@ class HttpFile(io.RawIOBase):
             resp.raise_for_status()
             if resp.headers.get('Accept-Ranges', 'none') != 'bytes':
                 raise OSError(None, 'Server does not accept byte ranges', url)
+            if 'Content-Encoding' in resp.headers:
+                raise OSError(None, 'Server provided Content-Encoding header', url)
             try:
                 self._length = int(resp.headers['Content-Length'])
             except (KeyError, ValueError):
@@ -125,6 +127,8 @@ class HttpFile(io.RawIOBase):
                 headers={'Range': f'bytes={start}-{end}', **self._HEADERS},
                 stream=True) as resp:
             resp.raise_for_status()
+            if 'Content-Encoding' in resp.headers:
+                raise OSError('Server provided Content-Encoding header')
             content_range = resp.headers.get('Content-Range', '')
             # RFC 7233 specifies the format
             match = re.fullmatch(r'bytes (\d+)-(\d+)/(?:\*|\d+)', content_range)
