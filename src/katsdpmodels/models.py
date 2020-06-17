@@ -58,7 +58,7 @@ class ModelTypeError(ModelError):
 
 
 class ModelFormatError(ModelError):
-    """The ``model_format`` attribute was missing or did match a known value."""
+    """The ``model_format`` attribute was missing or did not match a known value."""
 
 
 class DataError(ModelError):
@@ -217,7 +217,7 @@ def ensure_str(s):
     elif isinstance(s, bytes):
         return s.decode('utf-8')
     else:
-        raise TypeError('Expected bytes or str, received {}'.format(type(s)))
+        raise TypeError('Expected bytes, str or None, received {}'.format(type(s)))
 
 
 def rfc3339_to_datetime(timestamp: str) -> datetime:

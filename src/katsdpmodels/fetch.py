@@ -50,7 +50,7 @@ class Session(Protocol):
 class HttpFile(io.RawIOBase):
     """File-like object that fetches byte ranges via HTTP.
 
-    This requires the server to advertise for support byte-range requests and
+    This requires the server to advertise support for byte-range requests and
     to provide a Content-Length. It is currently *not* robust against the
     content changing.
 
