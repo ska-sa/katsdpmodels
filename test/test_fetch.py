@@ -147,6 +147,15 @@ def test_fetch_model_alias_loop(web_server) -> None:
     assert exc_info.value.original_url == url
 
 
+def test_fetch_model_too_many_aliases(web_server, monkeypatch) -> None:
+    monkeypatch.setattr(fetch, 'MAX_ALIASES', 1)
+    with pytest.raises(models.TooManyAliasesError):
+        fetch.fetch_model(web_server('indirect.alias'), DummyModel)
+    # Check that 1 level of alias is still permitted
+    with fetch.fetch_model(web_server('direct.alias'), DummyModel):
+        pass
+
+
 @pytest.mark.parametrize('filename', ['bad_model_type.hdf5', 'no_model_type.hdf5'])
 def test_fetch_model_model_type_error(filename, web_server) -> None:
     url = web_server(filename)

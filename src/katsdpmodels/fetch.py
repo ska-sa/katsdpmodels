@@ -24,7 +24,7 @@ import re
 import logging
 import os
 import urllib.parse
-from typing import Dict, Tuple, Optional, Type, TypeVar, Any, cast
+from typing import List, Dict, Tuple, Optional, Type, TypeVar, Any, cast
 from typing_extensions import Protocol
 
 import requests
@@ -223,17 +223,24 @@ class Fetcher:
                 model.close()
         self._model_cache.clear()
 
-    def resolve(self, url: str) -> str:
-        """Find the canonical URL, following aliases."""
-        original_url = url
-        aliases = 0
+    def resolve(self, url: str) -> List[str]:
+        """Follow a chain of aliases.
+
+        Return a list of URLs found along the chain. The first element is the
+        given URL and the final element is the resolved model.
+
+        Raises
+        ------
+        .models.TooManyAliasesError
+            If there were more than :const:`MAX_ALIASES` aliases or a cycle was found.
+        """
+        chain = [url]
         parts = urllib.parse.urlparse(url)
         while parts.path.endswith('.alias'):
-            aliases += 1
-            if aliases > MAX_ALIASES:
+            if len(chain) > MAX_ALIASES:
                 raise models.TooManyAliasesError.with_urls(
                     f'Reached limit of {MAX_ALIASES} levels of aliases',
-                    url=url, original_url=original_url)
+                    url=url, original_url=chain[0])
             if url in self._alias_cache:
                 new_url = self._alias_cache[url]
             else:
@@ -242,10 +249,15 @@ class Fetcher:
                     rel_path = resp.text.rstrip()
                     new_url = urllib.parse.urljoin(resp.url, rel_path)
                 self._alias_cache[url] = new_url
+            if new_url in chain:
+                raise models.TooManyAliasesError.with_urls(
+                    f'Cycle detected starting from {new_url}',
+                    url=new_url, original_url=chain[0])
+            chain.append(new_url)
             _logger.debug('Redirecting from %s to %s', url, new_url)
             url = new_url
             parts = urllib.parse.urlparse(url)
-        return url
+        return chain
 
     def _get_eager(self, url: str) -> Tuple[io.IOBase, str, str]:
         with self._session.get(url) as resp:
@@ -305,7 +317,7 @@ class Fetcher:
             Any exceptions raised by the underlying session.
         """
         original_url = url
-        url = self.resolve(url)
+        url = self.resolve(url)[-1]
         if url in self._model_cache:
             model = self._model_cache[url]
             if model_class.model_type != model.model_type:
