@@ -90,7 +90,7 @@ def test_http_file_forbidden(mock_responses):
 
 
 def test_http_file_ranges_not_accepted(mock_responses):
-    url = get_data_url('rfi_mask_ranges.hdf5')
+    url = get_data_url('rfi_mask_ranges.h5')
     with requests.Session() as session:
         with pytest.raises(OSError, match='Server does not accept byte ranges') as exc_info:
             fetch.HttpFile(session, url)
@@ -98,7 +98,7 @@ def test_http_file_ranges_not_accepted(mock_responses):
 
 
 def test_http_file_no_content_length(mock_responses):
-    url = get_data_url('rfi_mask_ranges.hdf5')
+    url = get_data_url('rfi_mask_ranges.h5')
     mock_responses.replace(responses.HEAD, url, headers={'Accept-Ranges': 'bytes'})
     with requests.Session() as session:
         with pytest.raises(OSError,
@@ -108,11 +108,11 @@ def test_http_file_no_content_length(mock_responses):
 
 
 def test_http_file_content_encoding(mock_responses):
-    url = get_data_url('rfi_mask_ranges.hdf5')
+    url = get_data_url('rfi_mask_ranges.h5')
     mock_responses.replace(
         responses.HEAD, url,
         headers={
-            'Content-Length': str(len(get_data('rfi_mask_ranges.hdf5'))),
+            'Content-Length': str(len(get_data('rfi_mask_ranges.h5'))),
             'Accept-Ranges': 'bytes',
             'Content-Encoding': 'gzip'
         }
@@ -125,18 +125,18 @@ def test_http_file_content_encoding(mock_responses):
 
 
 def test_http_file_content_encoding_get(mock_responses):
-    url = get_data_url('rfi_mask_ranges.hdf5')
+    url = get_data_url('rfi_mask_ranges.h5')
     mock_responses.replace(
         responses.HEAD, url,
         headers={
-            'Content-Length': str(len(get_data('rfi_mask_ranges.hdf5'))),
+            'Content-Length': str(len(get_data('rfi_mask_ranges.h5'))),
             'Accept-Ranges': 'bytes'
         }
     )
     mock_responses.replace(
         responses.GET, url,
         headers={
-            'Content-Length': str(len(get_data('rfi_mask_ranges.hdf5'))),
+            'Content-Length': str(len(get_data('rfi_mask_ranges.h5'))),
             'Accept-Ranges': 'bytes',
             'Content-Encoding': 'gzip'
         }
@@ -148,8 +148,8 @@ def test_http_file_content_encoding_get(mock_responses):
 
 
 def test_http_file_range_ignored(mock_responses):
-    url = get_data_url('rfi_mask_ranges.hdf5')
-    data = get_data('rfi_mask_ranges.hdf5')
+    url = get_data_url('rfi_mask_ranges.h5')
+    data = get_data('rfi_mask_ranges.h5')
     mock_responses.replace(
         responses.HEAD, url,
         headers={
@@ -170,7 +170,7 @@ def test_http_file_range_ignored(mock_responses):
 
 
 @pytest.mark.parametrize('use_file', [True, False])
-@pytest.mark.parametrize('filename', ['rfi_mask_ranges.hdf5', 'direct.alias', 'indirect.alias'])
+@pytest.mark.parametrize('filename', ['rfi_mask_ranges.h5', 'direct.alias', 'indirect.alias'])
 def test_fetch_model_simple(use_file, filename, web_server) -> None:
     url = get_file_url(filename) if use_file else web_server(filename)
     with fetch.fetch_model(url, DummyModel) as model:
@@ -196,7 +196,7 @@ def test_fetch_model_too_many_aliases(web_server, monkeypatch) -> None:
         pass
 
 
-@pytest.mark.parametrize('filename', ['bad_model_type.hdf5', 'no_model_type.hdf5'])
+@pytest.mark.parametrize('filename', ['bad_model_type.h5', 'no_model_type.h5'])
 def test_fetch_model_model_type_error(filename, web_server) -> None:
     url = web_server(filename)
     with pytest.raises(models.ModelTypeError) as exc_info:
@@ -214,7 +214,7 @@ def test_fetch_model_cached_model_type_error(web_server) -> None:
         def from_hdf5(cls, hdf5: h5py.File) -> 'OtherModel':
             return cls()
 
-    url = web_server('rfi_mask_ranges.hdf5')
+    url = web_server('rfi_mask_ranges.h5')
     with fetch.Fetcher() as fetcher:
         fetcher.get(url, DummyModel)
         with pytest.raises(models.ModelTypeError) as exc_info:
@@ -232,7 +232,7 @@ def test_fetch_model_file_type_error(web_server) -> None:
 
 
 def test_fetch_model_not_hdf5(web_server) -> None:
-    url = web_server('not_hdf5.hdf5')
+    url = web_server('not_hdf5.h5')
     with pytest.raises(models.DataError) as exc_info:
         fetch.fetch_model(url, DummyModel)
     assert exc_info.value.url == url
@@ -240,18 +240,18 @@ def test_fetch_model_not_hdf5(web_server) -> None:
 
 
 def test_fetch_model_checksum_ok(mock_responses) -> None:
-    data = get_data('rfi_mask_ranges.hdf5')
+    data = get_data('rfi_mask_ranges.h5')
     digest = hashlib.sha256(data).hexdigest()
-    url = get_data_url(f'sha256_{digest}.hdf5')
+    url = get_data_url(f'sha256_{digest}.h5')
     mock_responses.add(responses.GET, url, body=data)
     with fetch.fetch_model(url, DummyModel) as model:
         assert model.checksum == digest
 
 
 def test_fetch_model_checksum_bad(mock_responses) -> None:
-    data = get_data('rfi_mask_ranges.hdf5')
+    data = get_data('rfi_mask_ranges.h5')
     digest = hashlib.sha256(data).hexdigest()
-    url = get_data_url(f'sha256_{digest}.hdf5')
+    url = get_data_url(f'sha256_{digest}.h5')
     # Now invalidate the digest
     data += b'blahblahblah'
     mock_responses.add(responses.GET, url, body=data)
@@ -260,7 +260,7 @@ def test_fetch_model_checksum_bad(mock_responses) -> None:
     assert exc_info.value.url == url
 
 
-@pytest.mark.parametrize('filename', ['does_not_exist.hdf5', 'does_not_exist.alias'])
+@pytest.mark.parametrize('filename', ['does_not_exist.h5', 'does_not_exist.alias'])
 def test_fetch_model_bad_http_status(filename, web_server) -> None:
     url = web_server(filename)
     with pytest.raises(requests.HTTPError) as exc_info:
@@ -278,12 +278,12 @@ def test_fetch_model_http_redirect(mock_responses) -> None:
 def test_fetch_model_connection_error(mock_responses) -> None:
     # responses raises ConnectionError for any unregistered URL
     with pytest.raises(requests.ConnectionError):
-        fetch.fetch_model(get_data_url('does_not_exist.hdf5'), DummyModel)
+        fetch.fetch_model(get_data_url('does_not_exist.h5'), DummyModel)
 
 
 def test_fetcher_caching(mock_responses) -> None:
     with fetch.Fetcher() as fetcher:
-        model1 = fetcher.get(get_data_url('rfi_mask_ranges.hdf5'), DummyModel)
+        model1 = fetcher.get(get_data_url('rfi_mask_ranges.h5'), DummyModel)
         model2 = fetcher.get(get_data_url('indirect.alias'), DummyModel)
         model3 = fetcher.get(get_data_url('direct.alias'), DummyModel)
         assert model1 is model2
@@ -330,7 +330,7 @@ def test_custom_session(web_server) -> None:
 
 def test_lazy(web_server) -> None:
     with fetch.Fetcher() as fetcher:
-        model = fetcher.get(web_server('rfi_mask_ranges.hdf5'), DummyModel, lazy=True)
+        model = fetcher.get(web_server('rfi_mask_ranges.h5'), DummyModel, lazy=True)
         assert len(model.ranges) == 2
         assert not model.is_closed
     assert model.is_closed
