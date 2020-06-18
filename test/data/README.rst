@@ -26,6 +26,10 @@ bad_model_type.h5
     Contains a ``model_type`` field that is not legal.
 no_model_type.h5
     The ``model_type`` field is absent.
+bad_model_version.h5
+    Contains a ``model_version`` that is a string instead of an int.
+no_model_version.h5
+    The ``model_version`` field is absent.
 not_hdf5.h5
     Not a valid HDF5 file
 rfi_mask_bad_format.h5
