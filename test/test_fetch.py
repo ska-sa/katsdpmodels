@@ -99,7 +99,8 @@ def test_http_file_ranges_not_accepted(mock_responses):
 
 def test_http_file_no_content_length(mock_responses):
     url = get_data_url('rfi_mask_ranges.h5')
-    mock_responses.replace(responses.HEAD, url, headers={'Accept-Ranges': 'bytes'})
+    mock_responses.replace(responses.HEAD, url, content_type='application/x-hdf5',
+                           headers={'Accept-Ranges': 'bytes'})
     with requests.Session() as session:
         with pytest.raises(OSError,
                            match='Server did not provide Content-Length header') as exc_info:
@@ -223,10 +224,32 @@ def test_fetch_model_cached_model_type_error(web_server) -> None:
         assert exc_info.value.original_url == url
 
 
-def test_fetch_model_file_type_error(web_server) -> None:
+@pytest.mark.parametrize('lazy', [True, False])
+def test_fetch_model_bad_content_type(mock_responses, lazy) -> None:
+    data = get_data('rfi_mask_ranges.h5')
+    url = get_data_url('bad_content_type.h5')
+    mock_responses.add(
+        responses.HEAD, url, content_type='image/png',
+        headers={
+            'Accept-Ranges': 'bytes',
+            'Content-Length': str(len(data))
+        }
+    )
+    mock_responses.add(responses.GET, url, content_type='image/png', body=data)
+    with pytest.raises(models.FileTypeError,
+                       match='Expected application/x-hdf5, not image/png') as exc_info:
+        with fetch.Fetcher() as fetcher:
+            fetcher.get(url, DummyModel, lazy=lazy)
+    assert exc_info.value.url == url
+    assert exc_info.value.original_url == url
+
+
+@pytest.mark.parametrize('lazy', [True, False])
+def test_fetch_model_bad_extension(web_server, lazy) -> None:
     url = web_server('wrong_extension.blah')
     with pytest.raises(models.FileTypeError) as exc_info:
-        fetch.fetch_model(url, DummyModel)
+        with fetch.Fetcher() as fetcher:
+            fetcher.get(url, DummyModel, lazy=lazy)
     assert exc_info.value.url == url
     assert exc_info.value.original_url == url
 
@@ -243,7 +266,7 @@ def test_fetch_model_checksum_ok(mock_responses) -> None:
     data = get_data('rfi_mask_ranges.h5')
     digest = hashlib.sha256(data).hexdigest()
     url = get_data_url(f'sha256_{digest}.h5')
-    mock_responses.add(responses.GET, url, body=data)
+    mock_responses.add(responses.GET, url, content_type='application/x-hdf5', body=data)
     with fetch.fetch_model(url, DummyModel) as model:
         assert model.checksum == digest
 
@@ -254,7 +277,7 @@ def test_fetch_model_checksum_bad(mock_responses) -> None:
     url = get_data_url(f'sha256_{digest}.h5')
     # Now invalidate the digest
     data += b'blahblahblah'
-    mock_responses.add(responses.GET, url, body=data)
+    mock_responses.add(responses.GET, url, content_type='application/x-hdf5', body=data)
     with pytest.raises(models.ChecksumError) as exc_info:
         fetch.fetch_model(url, DummyModel)
     assert exc_info.value.url == url

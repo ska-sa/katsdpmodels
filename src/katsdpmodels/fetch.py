@@ -93,6 +93,7 @@ class HttpFile(io.RawIOBase):
             # TODO: consider storing ETag/Last-Modified to check for data
             # changing under us.
             self._url = resp.url
+            self.content_type = resp.headers.get('Content-Type')
 
     @property
     def url(self) -> str:
@@ -263,11 +264,12 @@ class Fetcher:
             parts = urllib.parse.urlparse(url)
         return chain
 
-    def _get_eager(self, url: str) -> Tuple[io.IOBase, str, str]:
+    def _get_eager(self, url: str) -> Tuple[io.IOBase, str, Optional[str], str]:
         with self._session.get(url) as resp:
             resp.raise_for_status()
             data = resp.content
             url = resp.url     # Handle HTTP redirects
+            content_type = resp.headers.get('Content-Type')
         checksum = hashlib.sha256(data).hexdigest()
         parts = urllib.parse.urlparse(url)
         match = re.search(r'/sha256_([a-z0-9]+)\.[^/]+$', parts.path)
@@ -276,11 +278,11 @@ class Fetcher:
                 raise models.ChecksumError('Content did not match checksum in URL')
         # typeshed doesn't reflect that BytesIO inherits from BufferedIOBase
         # (fixed in master, but not in mypy 0.780).
-        return cast(io.IOBase, io.BytesIO(data)), url, checksum
+        return cast(io.IOBase, io.BytesIO(data)), url, content_type, checksum
 
-    def _get_lazy(self, url: str) -> Tuple[io.IOBase, str]:
+    def _get_lazy(self, url: str) -> Tuple[io.IOBase, str, Optional[str]]:
         fh = HttpFile(self._session, url)
-        return fh, fh.url
+        return fh, fh.url, fh.content_type
 
     def get(self, url: str, model_class: Type[_M], *,
             lazy: bool = False) -> _M:
@@ -335,19 +337,24 @@ class Fetcher:
 
         try:
             if lazy:
-                fh, url = self._get_lazy(url)
+                fh, url, content_type = self._get_lazy(url)
                 checksum: Optional[str] = None
             else:
-                fh, url, checksum = self._get_eager(url)
+                fh, url, content_type, checksum = self._get_eager(url)
         except models.ModelError as exc:
             exc.original_url = original_url
             exc.url = url
             raise
+        if content_type == 'application/octet-stream':
+            # This is a generic/fallback content type that doesn't convey any
+            # useful information. The load_file method should use the
+            # extension instead.
+            content_type = None
 
         try:
             with contextlib.ExitStack() as exit_stack:
                 exit_stack.callback(fh.close)
-                new_model = model_class.from_file(fh, url)
+                new_model = model_class.from_file(fh, url, content_type=content_type)
                 exit_stack.pop_all()   # new_model now owns fh, or has closed it
         except models.ModelError as exc:
             exc.original_url = original_url
