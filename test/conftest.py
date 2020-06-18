@@ -46,7 +46,12 @@ def mock_responses() -> Generator[responses.RequestsMock, None, None]:
                 url = urllib.parse.urljoin(test_utils.BASE_URL, rel_url)
                 with open(path, 'rb') as f:
                     data = f.read()
-                rsps.add(responses.GET, url, body=data)
+                content_type = 'application/octet-stream'
+                if name.endswith('.h5'):
+                    content_type = 'application/x-hdf5'
+                elif name.endswith('.alias'):
+                    content_type = 'text/plain'
+                rsps.add(responses.GET, url, content_type=content_type, body=data)
                 rsps.add(responses.HEAD, url)
         yield rsps
 

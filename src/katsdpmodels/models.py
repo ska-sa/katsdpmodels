@@ -103,14 +103,16 @@ class Model(ABC):
 
     @classmethod
     @abstractmethod
-    def from_file(cls: Type[_M], file: io.IOBase, url: str) -> _M:
+    def from_file(cls: Type[_M], file: io.IOBase, url: str, *,
+                  content_type: Optional[str] = None) -> _M:
         """Load a model from raw data.
 
         On success, the callee takes responsibility for closing `file`, either
         within the function itself or the :meth:`close` method of the returned
         model.
 
-        The `url` may be used to determine the file type.
+        If `content_type` is given, it should be used to determine the file
+        type; otherwise `url` may be used instead.
         """
 
     def close(self) -> None:
@@ -153,11 +155,16 @@ class SimpleHDF5Model(Model):
     """
 
     @classmethod
-    def from_file(cls: Type[_H], file: io.IOBase, url: str) -> _H:
+    def from_file(cls: Type[_H], file: io.IOBase, url: str, *,
+                  content_type: Optional[str] = None) -> _H:
         with file:
-            parts = urllib.parse.urlparse(url)
-            if not parts.path.endswith(('.h5', '.hdf5')):
-                raise FileTypeError(f'Filename extension not recognised in {url}')
+            if content_type is not None:
+                if content_type != 'application/x-hdf5':
+                    raise FileTypeError(f'Expected application/x-hdf5, not {content_type}')
+            else:
+                parts = urllib.parse.urlparse(url)
+                if not parts.path.endswith(('.h5', '.hdf5')):
+                    raise FileTypeError(f'Filename extension not recognised in {url}')
             with h5py.File(file, 'r') as hdf5:
                 model_type = ensure_str(hdf5.attrs.get('model_type'))
                 if model_type != cls.model_type:
