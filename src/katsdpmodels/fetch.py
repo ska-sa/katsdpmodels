@@ -16,27 +16,24 @@
 
 """Fetch models over HTTP."""
 
-import contextlib
 import errno
 import io
-import hashlib
 import re
 import logging
 import os
-import urllib.parse
-from typing import List, Dict, Tuple, Optional, Type, TypeVar, Any, cast
+from typing import List, Generator, Optional, Type, TypeVar, cast
 from typing_extensions import Protocol
 
 import requests
 import requests_file
 
-from . import models
+from . import models, fetch_base
 
 
 MAX_ALIASES = 30
 _logger = logging.getLogger(__name__)
-_F = TypeVar('_F', bound='Fetcher')
-_M = TypeVar('_M', bound='models.Model')
+_T = TypeVar('_T')
+_M = TypeVar('_M', bound=models.Model)
 
 
 class Session(Protocol):
@@ -147,7 +144,7 @@ class HttpFile(io.RawIOBase):
         super().close()
 
 
-class Fetcher:
+class Fetcher(fetch_base.FetcherBase):
     """Fetches and caches models.
 
     It caches every URL it fetches (ignoring any cache control headers), so it
@@ -194,6 +191,7 @@ class Fetcher:
     """
 
     def __init__(self, *, session: Optional[Session] = None) -> None:
+        super().__init__()
         self._session: Session
         if session is None:
             self._session = requests.Session()
@@ -205,9 +203,6 @@ class Fetcher:
         else:
             self._session = session
             self.close_session = False
-        self._alias_cache: Dict[str, str] = {}
-        self._model_cache: Dict[str, models.Model] = {}
-        self.close_models = True
 
     @property
     def session(self) -> Session:
@@ -220,13 +215,42 @@ class Fetcher:
         --------
         :attr:`close_session`, :attr:`close_models`
         """
+        super().close()
         if self.close_session:
             self._session.close()
-        self._alias_cache.clear()
-        if self.close_models:
-            for model in self._model_cache.values():
-                model.close()
-        self._model_cache.clear()
+
+    def _handle_request(self, request: fetch_base.Request, *,
+                        lazy: bool = False) -> fetch_base.Response:
+        if request.response_type == fetch_base.ResponseType.TEXT:
+            with self._session.get(request.url) as resp:
+                resp.raise_for_status()
+                return fetch_base.TextResponse(resp.url, resp.headers, resp.text)
+        elif not lazy:
+            with self._session.get(request.url) as resp:
+                resp.raise_for_status()
+                content = resp.content
+                file = io.BytesIO(content)
+                return fetch_base.FileResponse(
+                    resp.url, resp.headers, file=cast(io.IOBase, file), content=content)
+        else:
+            fh = HttpFile(self._session, request.url)
+            # TODO: make HttpFile return the full headers
+            headers = requests.structures.CaseInsensitiveDict(
+                {'Content-type': fh.content_type or 'application/octet-stream'}
+            )
+            return fetch_base.FileResponse(fh.url, headers, file=fh, content=None)
+
+    def _run(self, gen: Generator[fetch_base.Request, fetch_base.Response, _T], *,
+             lazy: bool = False) -> _T:
+        try:
+            request = next(gen)      # Start it going
+            while True:
+                response = self._handle_request(request)
+                request = gen.send(response)
+        except StopIteration as exc:
+            return exc.value
+        finally:
+            gen.close()
 
     def resolve(self, url: str) -> List[str]:
         """Follow a chain of aliases.
@@ -239,50 +263,7 @@ class Fetcher:
         .models.TooManyAliasesError
             If there were more than :const:`MAX_ALIASES` aliases or a cycle was found.
         """
-        chain = [url]
-        parts = urllib.parse.urlparse(url)
-        while parts.path.endswith('.alias'):
-            if len(chain) > MAX_ALIASES:
-                raise models.TooManyAliasesError.with_urls(
-                    f'Reached limit of {MAX_ALIASES} levels of aliases',
-                    url=url, original_url=chain[0])
-            if url in self._alias_cache:
-                new_url = self._alias_cache[url]
-            else:
-                with self._session.get(url) as resp:
-                    resp.raise_for_status()
-                    rel_path = resp.text.rstrip()
-                    new_url = urllib.parse.urljoin(resp.url, rel_path)
-                self._alias_cache[url] = new_url
-            if new_url in chain:
-                raise models.TooManyAliasesError.with_urls(
-                    f'Cycle detected starting from {new_url}',
-                    url=new_url, original_url=chain[0])
-            chain.append(new_url)
-            _logger.debug('Redirecting from %s to %s', url, new_url)
-            url = new_url
-            parts = urllib.parse.urlparse(url)
-        return chain
-
-    def _get_eager(self, url: str) -> Tuple[io.IOBase, str, Optional[str], str]:
-        with self._session.get(url) as resp:
-            resp.raise_for_status()
-            data = resp.content
-            url = resp.url     # Handle HTTP redirects
-            content_type = resp.headers.get('Content-Type')
-        checksum = hashlib.sha256(data).hexdigest()
-        parts = urllib.parse.urlparse(url)
-        match = re.search(r'/sha256_([a-z0-9]+)\.[^/]+$', parts.path)
-        if match:
-            if checksum != match.group(1):
-                raise models.ChecksumError('Content did not match checksum in URL')
-        # typeshed doesn't reflect that BytesIO inherits from BufferedIOBase
-        # (fixed in master, but not in mypy 0.780).
-        return cast(io.IOBase, io.BytesIO(data)), url, content_type, checksum
-
-    def _get_lazy(self, url: str) -> Tuple[io.IOBase, str, Optional[str]]:
-        fh = HttpFile(self._session, url)
-        return fh, fh.url, fh.content_type
+        return self._run(self._resolve(url))
 
     def get(self, url: str, model_class: Type[_M], *,
             lazy: bool = False) -> _M:
@@ -322,57 +303,7 @@ class Fetcher:
         requests.exception.RequestException
             Any exceptions raised by the underlying session.
         """
-        original_url = url
-        url = self.resolve(url)[-1]
-        if url in self._model_cache:
-            model = self._model_cache[url]
-            if model_class.model_type != model.model_type:
-                raise models.ModelTypeError.with_urls(
-                    f'Expected a model of type {model_class.model_type!r}, '
-                    f'not {model.model_type!r}',
-                    url=url, original_url=original_url)
-            if not isinstance(model, model_class):
-                raise TypeError('model_class should be the base class for the model type')
-            return model
-
-        try:
-            if lazy:
-                fh, url, content_type = self._get_lazy(url)
-                checksum: Optional[str] = None
-            else:
-                fh, url, content_type, checksum = self._get_eager(url)
-        except models.ModelError as exc:
-            exc.original_url = original_url
-            exc.url = url
-            raise
-        if content_type == 'application/octet-stream':
-            # This is a generic/fallback content type that doesn't convey any
-            # useful information. The load_file method should use the
-            # extension instead.
-            content_type = None
-
-        try:
-            with contextlib.ExitStack() as exit_stack:
-                exit_stack.callback(fh.close)
-                new_model = model_class.from_file(fh, url, content_type=content_type)
-                exit_stack.pop_all()   # new_model now owns fh, or has closed it
-        except models.ModelError as exc:
-            exc.original_url = original_url
-            exc.url = url
-            raise
-        except Exception as exc:
-            raise models.DataError.with_urls(
-                f'Failed to load model from {url}: {exc}',
-                url=url, original_url=original_url) from exc
-        new_model.checksum = checksum
-        self._model_cache[url] = new_model
-        return new_model
-
-    def __enter__(self: _F) -> _F:
-        return self
-
-    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        self.close()
+        return self._run(self._get(url, model_class), lazy=lazy)
 
 
 def fetch_model(url: str, model_class: Type[_M], *,

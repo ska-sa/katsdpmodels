@@ -25,7 +25,7 @@ import pytest
 import requests
 import responses
 
-from katsdpmodels import models, fetch
+from katsdpmodels import models, fetch, fetch_base
 from test_utils import get_data, get_data_url, get_file_url, DummyModel
 
 
@@ -189,7 +189,7 @@ def test_fetch_model_alias_loop(web_server) -> None:
 
 
 def test_fetch_model_too_many_aliases(web_server, monkeypatch) -> None:
-    monkeypatch.setattr(fetch, 'MAX_ALIASES', 1)
+    monkeypatch.setattr(fetch_base, 'MAX_ALIASES', 1)
     with pytest.raises(models.TooManyAliasesError):
         fetch.fetch_model(web_server('indirect.alias'), DummyModel)
     # Check that 1 level of alias is still permitted
