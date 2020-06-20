@@ -21,14 +21,13 @@ import logging
 import io
 import re
 import urllib.parse
-from typing import List, Dict, Generator, Mapping, MutableMapping, Optional, Type, TypeVar, Any
+from typing import List, Dict, Generator, Mapping, MutableMapping, Optional, Type, TypeVar
 
 from .. import models
 
 
 MAX_ALIASES = 30
 _logger = logging.getLogger(__name__)
-_F = TypeVar('_F', bound='FetcherBase')
 _M = TypeVar('_M', bound=models.Model)
 
 
@@ -213,7 +212,7 @@ class FetcherBase:
         self._model_cache[url] = new_model
         return new_model
 
-    def close(self) -> None:
+    def _close(self) -> None:
         """Release the resources associated with the fetcher.
 
         After this the fetcher should not be used further, except that it is
@@ -226,9 +225,3 @@ class FetcherBase:
             self._model_cache.clear()
         else:
             self._model_cache = {}     # Allow garbage collection of the old cache
-
-    def __enter__(self: _F) -> _F:
-        return self
-
-    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        self.close()

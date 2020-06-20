@@ -23,6 +23,7 @@ import urllib.parse
 from typing import Tuple, Callable, Generator
 
 import pytest
+import aioresponses
 import responses
 import tornado.httpserver
 import tornado.netutil
@@ -34,25 +35,39 @@ import test_utils
 _Info = Tuple[asyncio.AbstractEventLoop, asyncio.Event, str]
 
 
+def _test_files() -> Generator[Tuple[str, str, bytes], None, None]:
+    data_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data')
+    for (dirpath, dirnames, filenames) in os.walk(data_dir):
+        for name in filenames:
+            path = pathlib.Path(dirpath) / name
+            rel_url = path.relative_to(data_dir).as_posix()
+            url = urllib.parse.urljoin(test_utils.BASE_URL, rel_url)
+            with open(path, 'rb') as f:
+                data = f.read()
+            content_type = 'application/octet-stream'
+            if name.endswith('.h5'):
+                content_type = 'application/x-hdf5'
+            elif name.endswith('.alias'):
+                content_type = 'text/plain'
+            yield url, content_type, data
+
+
 @pytest.fixture
 def mock_responses() -> Generator[responses.RequestsMock, None, None]:
-    """Fixture to make test data available via mocked HTTP."""
-    data_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data')
+    """Fixture to make test data available via mocked HTTP (for :mod:`requests`)."""
     with responses.RequestsMock(assert_all_requests_are_fired=False) as rsps:
-        for (dirpath, dirnames, filenames) in os.walk(data_dir):
-            for name in filenames:
-                path = pathlib.Path(dirpath) / name
-                rel_url = path.relative_to(data_dir).as_posix()
-                url = urllib.parse.urljoin(test_utils.BASE_URL, rel_url)
-                with open(path, 'rb') as f:
-                    data = f.read()
-                content_type = 'application/octet-stream'
-                if name.endswith('.h5'):
-                    content_type = 'application/x-hdf5'
-                elif name.endswith('.alias'):
-                    content_type = 'text/plain'
-                rsps.add(responses.GET, url, content_type=content_type, body=data)
-                rsps.add(responses.HEAD, url)
+        for url, content_type, data in _test_files():
+            rsps.add(responses.GET, url, content_type=content_type, body=data)
+            rsps.add(responses.HEAD, url, content_type=content_type)
+        yield rsps
+
+
+@pytest.fixture
+def mock_aioresponses() -> Generator[aioresponses.aioresponses, None, None]:
+    """Fixture to make test data available via mocked HTTP (for :mod:`aiohttp`)."""
+    with aioresponses.aioresponses() as rsps:
+        for url, content_type, data in _test_files():
+            rsps.get(url, content_type=content_type, body=data)
         yield rsps
 
 

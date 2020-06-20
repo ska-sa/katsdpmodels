@@ -21,7 +21,7 @@ import io
 import re
 import logging
 import os
-from typing import List, Generator, Dict, MutableMapping, Optional, Type, TypeVar, cast
+from typing import List, Generator, Dict, MutableMapping, Optional, Type, TypeVar, Any, cast
 
 import requests
 import requests_file
@@ -29,10 +29,10 @@ import requests_file
 from .. import models, fetch
 
 
-MAX_ALIASES = 30
 _logger = logging.getLogger(__name__)
 _T = TypeVar('_T')
 _M = TypeVar('_M', bound=models.Model)
+_F = TypeVar('_F', bound='Fetcher')
 
 
 class HttpFile(io.RawIOBase):
@@ -192,12 +192,19 @@ class Fetcher(fetch.FetcherBase):
         return self._session
 
     def close(self) -> None:
-        super().close()
+        self._close()
         if self._close_session:
             self._session.close()
 
+    def __enter__(self: _F) -> _F:
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        self.close()
+
     def _handle_request(self, request: fetch.Request, *,
                         lazy: bool = False) -> fetch.Response:
+        assert request.response_type in {fetch.ResponseType.TEXT, fetch.ResponseType.FILE}
         if request.response_type == fetch.ResponseType.TEXT:
             with self._session.get(request.url) as resp:
                 resp.raise_for_status()
@@ -238,7 +245,7 @@ class Fetcher(fetch.FetcherBase):
         Raises
         ------
         .TooManyAliasesError
-            If there were more than :const:`MAX_ALIASES` aliases or a cycle was found.
+            If there were more than :const:`.MAX_ALIASES` aliases or a cycle was found.
         """
         return self._run(self._resolve(url))
 
