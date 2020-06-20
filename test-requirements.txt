@@ -1,4 +1,4 @@
-aioresponses
+aioresponses==0.6.4
 attrs                           # via pytest
 coverage
 importlib-metadata              # via pytest
