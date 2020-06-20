@@ -10,7 +10,7 @@ idna-ssl                      # via aiohttp
 multidict                     # via aiohttp
 numpy
 requests
-strict_rfc3339==0.7
-typing_extensions
+strict-rfc3339
+typing-extensions
 urllib3                       # via requests
 yarl                          # via aiohttp
