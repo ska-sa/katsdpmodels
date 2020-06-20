@@ -73,6 +73,10 @@ class TooManyAliasesError(ModelError):
     """The limit on the number of alias redirections was reached."""
 
 
+class LocalRedirectError(ModelError):
+    """An http(s) alias retried to redirect to a local file."""
+
+
 class Model(ABC):
     """Base class for models.
 
@@ -163,7 +167,8 @@ class SimpleHDF5Model(Model):
                     raise FileTypeError(f'Expected application/x-hdf5, not {content_type}')
             else:
                 parts = urllib.parse.urlparse(url)
-                if not parts.path.endswith(('.h5', '.hdf5')):
+                path = urllib.parse.unquote(parts.path)
+                if not path.endswith(('.h5', '.hdf5')):
                     raise FileTypeError(f'Filename extension not recognised in {url}')
             with h5py.File(file, 'r') as hdf5:
                 model_type = ensure_str(hdf5.attrs.get('model_type'))

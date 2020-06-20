@@ -143,7 +143,7 @@ class FetcherBase:
     def _resolve(self, url: str) -> Generator[Request, Response, List[str]]:
         chain = [url]
         parts = urllib.parse.urlparse(url)
-        while parts.path.endswith('.alias'):
+        while urllib.parse.unquote(parts.path).endswith('.alias'):
             if len(chain) > MAX_ALIASES:
                 raise models.TooManyAliasesError.with_urls(
                     f'Reached limit of {MAX_ALIASES} levels of aliases',
@@ -156,6 +156,11 @@ class FetcherBase:
                 assert isinstance(response, TextResponse)
                 rel_path = response.text.rstrip()
                 new_url = urllib.parse.urljoin(response.url, rel_path)
+                new_scheme = urllib.parse.urlparse(new_url).scheme
+                if new_scheme == 'file' and parts.scheme != 'file':
+                    raise models.LocalRedirectError.with_urls(
+                        f'Remote {url} tried to redirect to local {new_url}',
+                        url=url, original_url=chain[0])
                 self._alias_cache[url] = new_url
             if new_url in chain:
                 raise models.TooManyAliasesError.with_urls(
@@ -218,7 +223,8 @@ class FetcherBase:
                 if response.content is not None:
                     checksum = hashlib.sha256(response.content).hexdigest()
                     parts = urllib.parse.urlparse(url)
-                    match = re.search(r'/sha256_([a-z0-9]+)\.[^/]+$', parts.path)
+                    match = re.search(r'/sha256_([a-z0-9]+)\.[^/]+$',
+                                      urllib.parse.unquote(parts.path))
                     if match and checksum != match.group(1):
                         raise models.ChecksumError('Content did not match checksum in URL')
                 try:
