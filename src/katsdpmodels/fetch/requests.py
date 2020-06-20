@@ -21,10 +21,10 @@ import io
 import re
 import logging
 import os
+import urllib.parse
 from typing import List, Generator, Dict, MutableMapping, Optional, Type, TypeVar, Any, cast
 
 import requests
-import requests_file
 
 from .. import models, fetch
 
@@ -178,10 +178,6 @@ class Fetcher(fetch.FetcherBase):
         super().__init__(model_cache=model_cache)
         if session is None:
             self._session = requests.Session()
-            # TODO: requests_file is convenient, but it would be more efficient to
-            # open the file directly with h5py rather than sucking it into a
-            # BytesIO.
-            self._session.mount('file://', requests_file.FileAdapter())
             self._close_session = True
         else:
             self._session = session
@@ -205,7 +201,10 @@ class Fetcher(fetch.FetcherBase):
     def _handle_request(self, request: fetch.Request, *,
                         lazy: bool = False) -> fetch.Response:
         assert request.response_type in {fetch.ResponseType.TEXT, fetch.ResponseType.FILE}
-        if request.response_type == fetch.ResponseType.TEXT:
+        parts = urllib.parse.urlparse(request.url)
+        if parts.scheme == 'file':
+            return self._handle_file_scheme(request, lazy)
+        elif request.response_type == fetch.ResponseType.TEXT:
             with self._session.get(request.url) as resp:
                 resp.raise_for_status()
                 return fetch.TextResponse(resp.url, resp.headers, resp.text)

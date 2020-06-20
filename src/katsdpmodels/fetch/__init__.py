@@ -19,9 +19,10 @@ import enum
 import hashlib
 import logging
 import io
+import pathlib
 import re
 import urllib.parse
-from typing import List, Dict, Generator, Mapping, MutableMapping, Optional, Type, TypeVar
+from typing import List, Dict, Generator, Mapping, MutableMapping, Optional, Type, TypeVar, cast
 
 from .. import models
 
@@ -165,6 +166,32 @@ class FetcherBase:
             url = new_url
             parts = urllib.parse.urlparse(url)
         return chain
+
+    def _handle_file_scheme(self, request: Request, lazy: bool = False) -> Response:
+        """Handle a request with ``file://`` scheme.
+
+        Subclasses can delegate to this function to deal with such URLs.
+        """
+        assert request.response_type in {ResponseType.TEXT, ResponseType.FILE}
+        parts = urllib.parse.urlparse(request.url)
+        path = pathlib.Path(urllib.parse.unquote(parts.path)).resolve()
+        response: Response
+        if request.response_type == ResponseType.TEXT:
+            with open(path, 'r', errors='replace') as f:
+                text = f.read()
+                response = TextResponse(path.as_uri(), {}, text)
+        else:
+            with contextlib.ExitStack() as exit_stack:
+                file = open(path, 'rb')
+                exit_stack.callback(file.close)
+                if not lazy and file.seekable:
+                    content: Optional[bytes] = file.read()
+                    file.seek(0)
+                else:
+                    content = None
+                exit_stack.pop_all()
+                response = FileResponse(path.as_uri(), {}, cast(io.IOBase, file), content)
+        return response
 
     def _get(self, url: str, model_class: Type[_M]) -> Generator[Request, Response, _M]:
         original_url = url

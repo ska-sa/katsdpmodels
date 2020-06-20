@@ -17,6 +17,7 @@
 """Fetch models asynchronously over HTTP."""
 
 import io
+import urllib.parse
 from typing import List, Dict, Generator, Optional, MutableMapping, Type, TypeVar, Any, cast
 
 import aiohttp
@@ -94,7 +95,9 @@ class Fetcher(fetch.FetcherBase):
 
     async def _handle_request(self, request: fetch.Request) -> fetch.Response:
         assert request.response_type in {fetch.ResponseType.TEXT, fetch.ResponseType.FILE}
-        if request.response_type == fetch.ResponseType.TEXT:
+        if urllib.parse.urlparse(request.url).scheme == 'file':
+            return self._handle_file_scheme(request)
+        elif request.response_type == fetch.ResponseType.TEXT:
             async with self._session.get(request.url, raise_for_status=True) as resp:
                 text = await resp.text()
                 return fetch.TextResponse(str(resp.url), resp.headers, text)

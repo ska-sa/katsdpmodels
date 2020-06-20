@@ -27,8 +27,7 @@ import katsdpmodels.fetch.aiohttp as fetch_aiohttp
 from test_utils import get_data, get_data_url, get_file_url, DummyModel
 
 
-# TODO: re-enable testing for file URLs later
-@pytest.mark.parametrize('use_file', [False])
+@pytest.mark.parametrize('use_file', [True, False])
 @pytest.mark.parametrize('filename', ['rfi_mask_ranges.h5', 'direct.alias', 'indirect.alias'])
 @pytest.mark.asyncio
 async def test_fetch_model_simple(use_file, filename, web_server) -> None:
