@@ -1,5 +1,7 @@
 aiohttp
 astropy
+async-timeout                 # via aiohttp
+attrs                         # via aiohttp
 certifi                       # via requests
 chardet                       # via requests, aiohttp
 h5py
