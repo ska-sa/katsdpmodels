@@ -21,15 +21,15 @@ import logging
 import io
 import re
 import urllib.parse
-from typing import List, Dict, Generator, Mapping, Optional, Type, TypeVar, Any
+from typing import List, Dict, Generator, Mapping, MutableMapping, Optional, Type, TypeVar, Any
 
-from . import models
+from .. import models
 
 
 MAX_ALIASES = 30
 _logger = logging.getLogger(__name__)
 _F = TypeVar('_F', bound='FetcherBase')
-_M = TypeVar('_M', bound='models.Model')
+_M = TypeVar('_M', bound=models.Model)
 
 
 class ResponseType(enum.Enum):
@@ -47,7 +47,15 @@ class Request:
 
 
 class Response:
-    """Bare essentials of a response to a :class:`Request`."""
+    """Bare essentials of a response to a :class:`Request`.
+
+    Parameters
+    ----------
+    url
+        The final URL of the request, after handling any redirects.
+    headers
+        A case-insensitive mapping of HTTP headers
+    """
 
     def __init__(self, url: str, headers: Mapping[str, str]) -> None:
         self.url = url
@@ -55,6 +63,12 @@ class Response:
 
     @property
     def content_type(self) -> Optional[str]:
+        """The MIME content type of the request.
+
+        Any parameters (like encoding) are stripped off. If the Content-Type
+        header is missing or it is application/octet-stream, returns
+        ``None``.
+        """
         raw = self.headers.get('Content-Type', 'application/octet-stream')
         # Split parameters like encoding
         content_type = raw.split(';')[0].strip()
@@ -75,7 +89,21 @@ class TextResponse(Response):
 
 
 class FileResponse(Response):
-    """Response to a :const:`ResponseType.FILE` request."""
+    """Response to a :const:`ResponseType.FILE` request.
+
+    Parameters
+    ----------
+    url
+        The final URL of the request, after handling any redirects.
+    headers
+        A case-insensitive mapping of HTTP headers
+    file
+        A file-like object from which the binary content can be read. The
+        receiver of the response is responsible for closing it.
+    content
+        If available, the content of the response. It is used only for
+        verifying checksums.
+    """
 
     def __init__(self, url: str, headers: Mapping[str, str],
                  file: io.IOBase, content: Optional[bytes] = None) -> None:
@@ -85,10 +113,32 @@ class FileResponse(Response):
 
 
 class FetcherBase:
-    def __init__(self) -> None:
+    """Base class for HTTP fetcher implementations.
+
+    It does not perform any I/O itself. Instead, it provides generators
+    that yield :class:`Request`s and expects to receive :class:`Response`s in
+    reply. The subclass is responsible for producing the responses to
+    requests. This design allows the core logic to be shared between
+    synchronous and asynchronous implementations.
+
+    Parameters
+    ----------
+    model_cache
+        A dictionary for caching models by URL. This is not typically needed,
+        as the fetcher will use an internal cache if one is not provided, but
+        allows fetchers to share a cache (but not in a thread-safe way!).
+        If a custom cache is provided, then :meth:`close` will not close the
+        models in it, and the caller is responsible for doing so.
+    """
+
+    def __init__(self, *, model_cache: Optional[MutableMapping[str, models.Model]] = None) -> None:
         self._alias_cache: Dict[str, str] = {}
-        self._model_cache: Dict[str, models.Model] = {}
-        self.close_models = True
+        if model_cache is not None:
+            self._model_cache = model_cache
+            self._close_models = False
+        else:
+            self._model_cache = {}
+            self._close_models = True
 
     def _resolve(self, url: str) -> Generator[Request, Response, List[str]]:
         chain = [url]
@@ -166,15 +216,16 @@ class FetcherBase:
     def close(self) -> None:
         """Release the resources associated with the fetcher.
 
-        See also
-        --------
-        :attr:`close_session`, :attr:`close_models`
+        After this the fetcher should not be used further, except that it is
+        legal to call this method multiple times.
         """
         self._alias_cache.clear()
-        if self.close_models:
+        if self._close_models:
             for model in self._model_cache.values():
                 model.close()
-        self._model_cache.clear()
+            self._model_cache.clear()
+        else:
+            self._model_cache = {}     # Allow garbage collection of the old cache
 
     def __enter__(self: _F) -> _F:
         return self

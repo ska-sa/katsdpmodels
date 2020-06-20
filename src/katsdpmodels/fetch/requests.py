@@ -21,27 +21,18 @@ import io
 import re
 import logging
 import os
-from typing import List, Generator, Optional, Type, TypeVar, cast
-from typing_extensions import Protocol
+from typing import List, Generator, Dict, MutableMapping, Optional, Type, TypeVar, cast
 
 import requests
 import requests_file
 
-from . import models, fetch_base
+from .. import models, fetch
 
 
 MAX_ALIASES = 30
 _logger = logging.getLogger(__name__)
 _T = TypeVar('_T')
 _M = TypeVar('_M', bound=models.Model)
-
-
-class Session(Protocol):
-    """Generalization of :class:`requests.Session`."""
-
-    def get(self, url: str, **kwargs) -> requests.Response: ...   # pragma: nocover
-    def head(self, url: str, **kwargs) -> requests.Response: ...  # pragma: nocover
-    def close(self) -> None: ...                                  # pragma: nocover
 
 
 class HttpFile(io.RawIOBase):
@@ -68,7 +59,7 @@ class HttpFile(io.RawIOBase):
         'Accept-Encoding': 'identity'
     }
 
-    def __init__(self, session: Session, url: str) -> None:
+    def __init__(self, session: requests.Session, url: str) -> None:
         self._session = session
         self._offset = 0
         # TODO do we need to set Accept-Encoding: none? Not sure how transfer
@@ -144,8 +135,8 @@ class HttpFile(io.RawIOBase):
         super().close()
 
 
-class Fetcher(fetch_base.FetcherBase):
-    """Fetches and caches models.
+class Fetcher(fetch.FetcherBase):
+    """Fetches and caches models, using the :mod:`requests` library.
 
     It caches every URL it fetches (ignoring any cache control headers), so it
     should not be reused over a long time.  It is best suited to fetching a
@@ -166,21 +157,12 @@ class Fetcher(fetch_base.FetcherBase):
         closed when the fetcher is closed. If a custom session is provided it
         will *not* be closed (so it can be shared between multiple
         :class:`Fetcher` instances).
-
-        It need not be an instance of :class:`requests.Session`; one can
-        create any class as long as it implements the :class:`Session`
-        protocol.
-
-    Attributes
-    ----------
-    close_models
-        If true (the default), the cached models will be closed when the
-        fetcher is closed. If set to false, the user must close the models.
-        This is only intended for use by :func:`fetch_model`.
-    close_session
-        If true, the session used for HTTP requests will be closed when the
-        fetcher is closed. It defaults to true if an internally-created session
-        is used, and false if the user provided a session.
+    model_cache
+        A dictionary for caching models by URL. This is not typically needed,
+        as the fetcher will use an internal cache if one is not provided, but
+        allows fetchers to share a cache (but not in a thread-safe way!).
+        If a custom cache is provided, then :meth:`close` will not close the
+        models in it, and the caller is responsible for doing so.
 
     Raises
     ------
@@ -190,47 +172,42 @@ class Fetcher(fetch_base.FetcherBase):
         For any issues at the HTTP level
     """
 
-    def __init__(self, *, session: Optional[Session] = None) -> None:
-        super().__init__()
-        self._session: Session
+    def __init__(self, *,
+                 session: Optional[requests.Session] = None,
+                 model_cache: Optional[MutableMapping[str, models.Model]] = None) -> None:
+        super().__init__(model_cache=model_cache)
         if session is None:
             self._session = requests.Session()
             # TODO: requests_file is convenient, but it would be more efficient to
             # open the file directly with h5py rather than sucking it into a
             # BytesIO.
             self._session.mount('file://', requests_file.FileAdapter())
-            self.close_session = True
+            self._close_session = True
         else:
             self._session = session
-            self.close_session = False
+            self._close_session = False
 
     @property
-    def session(self) -> Session:
+    def session(self) -> requests.Session:
         return self._session
 
     def close(self) -> None:
-        """Release the resources associated with the fetcher.
-
-        See also
-        --------
-        :attr:`close_session`, :attr:`close_models`
-        """
         super().close()
-        if self.close_session:
+        if self._close_session:
             self._session.close()
 
-    def _handle_request(self, request: fetch_base.Request, *,
-                        lazy: bool = False) -> fetch_base.Response:
-        if request.response_type == fetch_base.ResponseType.TEXT:
+    def _handle_request(self, request: fetch.Request, *,
+                        lazy: bool = False) -> fetch.Response:
+        if request.response_type == fetch.ResponseType.TEXT:
             with self._session.get(request.url) as resp:
                 resp.raise_for_status()
-                return fetch_base.TextResponse(resp.url, resp.headers, resp.text)
+                return fetch.TextResponse(resp.url, resp.headers, resp.text)
         elif not lazy:
             with self._session.get(request.url) as resp:
                 resp.raise_for_status()
                 content = resp.content
                 file = io.BytesIO(content)
-                return fetch_base.FileResponse(
+                return fetch.FileResponse(
                     resp.url, resp.headers, file=cast(io.IOBase, file), content=content)
         else:
             fh = HttpFile(self._session, request.url)
@@ -238,9 +215,9 @@ class Fetcher(fetch_base.FetcherBase):
             headers = requests.structures.CaseInsensitiveDict(
                 {'Content-type': fh.content_type or 'application/octet-stream'}
             )
-            return fetch_base.FileResponse(fh.url, headers, file=fh, content=None)
+            return fetch.FileResponse(fh.url, headers, file=fh, content=None)
 
-    def _run(self, gen: Generator[fetch_base.Request, fetch_base.Response, _T], *,
+    def _run(self, gen: Generator[fetch.Request, fetch.Response, _T], *,
              lazy: bool = False) -> _T:
         try:
             request = next(gen)      # Start it going
@@ -260,7 +237,7 @@ class Fetcher(fetch_base.FetcherBase):
 
         Raises
         ------
-        .models.TooManyAliasesError
+        .TooManyAliasesError
             If there were more than :const:`MAX_ALIASES` aliases or a cycle was found.
         """
         return self._run(self._resolve(url))
@@ -307,7 +284,7 @@ class Fetcher(fetch_base.FetcherBase):
 
 
 def fetch_model(url: str, model_class: Type[_M], *,
-                session: Optional[Session] = None) -> _M:
+                session: Optional[requests.Session] = None) -> _M:
     """Convenience function for retrieving a single model.
 
     This should only be used when loading just a single model. If multiple
@@ -315,6 +292,7 @@ def fetch_model(url: str, model_class: Type[_M], *,
     and use it to fetch models, as this will allow models that turn out to be
     the same to be shared.
     """
-    with Fetcher(session=session) as fetcher:
-        fetcher.close_models = False
+    # Custom cache so that fetcher won't close the model
+    model_cache: Dict[str, models.Model] = {}
+    with Fetcher(session=session, model_cache=model_cache) as fetcher:
         return fetcher.get(url, model_class)
