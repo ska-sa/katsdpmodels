@@ -226,7 +226,7 @@ class Fetcher(fetch.FetcherBase):
         try:
             request = next(gen)      # Start it going
             while True:
-                response = self._handle_request(request)
+                response = self._handle_request(request, lazy=lazy)
                 request = gen.send(response)
         except StopIteration as exc:
             return exc.value
