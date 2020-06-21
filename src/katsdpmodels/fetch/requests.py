@@ -62,8 +62,6 @@ class HttpFile(io.RawIOBase):
     def __init__(self, session: requests.Session, url: str) -> None:
         self._session = session
         self._offset = 0
-        # TODO do we need to set Accept-Encoding: none? Not sure how transfer
-        # encoding interact with byte ranges.
         with session.head(url, headers=self._HEADERS, allow_redirects=True) as resp:
             if resp.status_code == 404:
                 raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), url)
