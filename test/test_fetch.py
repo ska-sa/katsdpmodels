@@ -148,6 +148,20 @@ def test_http_file_content_encoding_get(mock_responses):
                 file.read()
 
 
+def test_http_file_url_attr(mock_responses, web_server):
+    url = get_data_url('subdir/redirect.h5')
+    new_url = web_server('rfi_mask_ranges.h5')
+    mock_responses.add(
+        responses.HEAD, url,
+        headers={'Location': new_url},
+        status=307
+    )
+    mock_responses.add_passthru(web_server(''))
+    with requests.Session() as session:
+        with fetch_requests.HttpFile(session, url) as file:
+            assert file.url == new_url
+
+
 def test_http_file_range_ignored(mock_responses):
     url = get_data_url('rfi_mask_ranges.h5')
     data = get_data('rfi_mask_ranges.h5')
@@ -200,11 +214,18 @@ def test_fetch_model_too_many_aliases(web_server, monkeypatch) -> None:
 @pytest.mark.parametrize('filename', ['bad_model_type.h5', 'no_model_type.h5'])
 def test_fetch_model_model_type_error(filename, web_server) -> None:
     url = web_server(filename)
-    with pytest.raises(models.ModelTypeError) as exc_info:
+    with pytest.raises(models.ModelTypeError, match='rfi_mask') as exc_info:
         fetch_requests.fetch_model(url, DummyModel)
     assert exc_info.value.url == url
     assert exc_info.value.original_url == url
-    assert 'rfi_mask' in str(exc_info.value)
+
+
+def test_fetch_model_invalid_created(web_server) -> None:
+    url = web_server('invalid_created.h5')
+    with pytest.raises(models.DataError, match='Invalid creation timestamp') as exc_info:
+        fetch_requests.fetch_model(url, DummyModel)
+    assert exc_info.value.url == url
+    assert exc_info.value.original_url == url
 
 
 def test_fetch_model_cached_model_type_error(web_server) -> None:

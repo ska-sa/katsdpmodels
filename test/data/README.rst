@@ -38,6 +38,8 @@ rfi_mask_ranges_is_group.h5
     There is a group called ``ranges`` rather than a dataset.
 wrong_extension.blah
     Copy of rfi_mask_ranges.h5 with a different extension.
+invalid_created.h5
+    model_created is not correctly formatted.
 
 Other
 -----
