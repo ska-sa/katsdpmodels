@@ -211,6 +211,14 @@ def test_fetch_model_too_many_aliases(web_server, monkeypatch) -> None:
         pass
 
 
+def test_fetch_model_to_file_alias(web_server) -> None:
+    url = web_server('to_file.alias')
+    with pytest.raises(models.LocalRedirectError) as exc_info:
+        fetch_requests.fetch_model(url, DummyModel)
+    assert exc_info.value.url == url
+    assert exc_info.value.original_url == url
+
+
 @pytest.mark.parametrize('filename', ['bad_model_type.h5', 'no_model_type.h5'])
 def test_fetch_model_model_type_error(filename, web_server) -> None:
     url = web_server(filename)
@@ -390,3 +398,9 @@ def test_lazy(web_server) -> None:
         assert len(model.ranges) == 2
         assert not model.is_closed
     assert model.is_closed
+
+
+def test_lazy_local() -> None:
+    with fetch_requests.Fetcher() as fetcher:
+        model = fetcher.get(get_file_url('rfi_mask_ranges.h5'), DummyModel, lazy=True)
+        assert len(model.ranges) == 2

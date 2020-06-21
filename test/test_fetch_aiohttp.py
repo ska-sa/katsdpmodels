@@ -60,6 +60,15 @@ async def test_fetch_model_too_many_aliases(web_server, monkeypatch) -> None:
         pass
 
 
+@pytest.mark.asyncio
+async def test_fetch_model_to_file_alias(web_server) -> None:
+    url = web_server('to_file.alias')
+    with pytest.raises(models.LocalRedirectError) as exc_info:
+        await fetch_aiohttp.fetch_model(url, DummyModel)
+    assert exc_info.value.url == url
+    assert exc_info.value.original_url == url
+
+
 @pytest.mark.parametrize('filename', ['bad_model_type.h5', 'no_model_type.h5'])
 @pytest.mark.asyncio
 async def test_fetch_model_model_type_error(filename, web_server) -> None:
