@@ -91,7 +91,7 @@ class Model(ABC):
     Subclassing should generally be done in two layers:
 
     1. A class that defines `model_type` and defines the interface for that
-       model type. This will be passed to :class:`.Fetcher` to indicate what
+       model type. This will be passed to fetchers to indicate what
        model type is expected. Due to limitations in mypy, this should not
        use ``@abstractmethod`` for the interface methods.
     2. A concrete implementation that defines `model_format`.
@@ -155,7 +155,7 @@ class SimpleHDF5Model(Model):
     It does not handle lazy loading: the :meth:`from_hdf5` class method must
     load all the data out of the HDF5 file as it will be closed by the caller.
     The implementation of :meth:`from_hdf5` does not need to pull out the
-    generic metadata (comment, target, author, created).
+    generic metadata (comment, target, author etc).
     """
 
     @classmethod

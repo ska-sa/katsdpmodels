@@ -1,16 +1,16 @@
 katsdpmodels package
 ====================
 
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   katsdpmodels.fetch
+
 Submodules
 ----------
-
-katsdpmodels.fetch module
--------------------------
-
-.. automodule:: katsdpmodels.fetch
-   :members:
-   :undoc-members:
-   :show-inheritance:
 
 katsdpmodels.models module
 --------------------------

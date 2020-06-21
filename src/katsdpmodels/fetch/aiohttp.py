@@ -128,7 +128,7 @@ class Fetcher(fetch.FetcherBase):
         Raises
         ------
         .TooManyAliasesError
-            If there were more than :const:`.MAX_ALIASES` aliases or a cycle was found.
+            If there were more than :data:`.MAX_ALIASES` aliases or a cycle was found.
         """
         return await self._run(self._resolve(url))
 

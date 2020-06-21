@@ -27,7 +27,7 @@ from typing import List, Dict, Generator, Mapping, MutableMapping, Optional, Typ
 from .. import models
 
 
-MAX_ALIASES = 30
+MAX_ALIASES = 30     #: Maximum number of aliases that will be followed to find a model
 _logger = logging.getLogger(__name__)
 _M = TypeVar('_M', bound=models.Model)
 
@@ -116,10 +116,10 @@ class FetcherBase:
     """Base class for HTTP fetcher implementations.
 
     It does not perform any I/O itself. Instead, it provides generators
-    that yield :class:`Request`s and expects to receive :class:`Response`s in
-    reply. The subclass is responsible for producing the responses to
-    requests. This design allows the core logic to be shared between
-    synchronous and asynchronous implementations.
+    that yield :class:`Requests <Request>` and expects to receive
+    :class:`Responses <Response>` in reply. The subclass is responsible for
+    producing the responses to requests. This design allows the core logic to
+    be shared between synchronous and asynchronous implementations.
 
     Parameters
     ----------
@@ -127,8 +127,8 @@ class FetcherBase:
         A dictionary for caching models by URL. This is not typically needed,
         as the fetcher will use an internal cache if one is not provided, but
         allows fetchers to share a cache (but not in a thread-safe way!).
-        If a custom cache is provided, then :meth:`close` will not close the
-        models in it, and the caller is responsible for doing so.
+        If a custom cache is provided, then closing the fetcher will not close
+        the models in it, and the caller is responsible for doing so.
     """
 
     def __init__(self, *, model_cache: Optional[MutableMapping[str, models.Model]] = None) -> None:

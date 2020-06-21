@@ -48,7 +48,10 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 intersphinx_mapping = {
     'python': ('https://docs.python.org/3', None),
     'numpy': ('https://numpy.org/doc/stable', None),
-    'astropy': ('https://docs.astropy.org/en/stable', None)
+    'astropy': ('https://docs.astropy.org/en/stable', None),
+    'h5py': ('https://docs.h5py.org/en/stable', None),
+    'requests': ('https://requests.readthedocs.io/en/master/', None),
+    'aiohttp': ('https://docs.aiohttp.org/en/stable', None),
 }
 
 # -- Options for HTML output -------------------------------------------------

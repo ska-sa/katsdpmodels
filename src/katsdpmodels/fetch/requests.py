@@ -168,7 +168,7 @@ class Fetcher(fetch.FetcherBase):
     ------
     :exc:`.ModelError`
         For any issues with the model itself
-    :exc:`requests.exceptions.RequestException`
+    :exc:`requests.RequestException`
         For any issues at the HTTP level
     """
 
@@ -244,7 +244,7 @@ class Fetcher(fetch.FetcherBase):
         Raises
         ------
         .TooManyAliasesError
-            If there were more than :const:`.MAX_ALIASES` aliases or a cycle was found.
+            If there were more than :data:`.MAX_ALIASES` aliases or a cycle was found.
         """
         return self._run(self._resolve(url))
 
@@ -268,16 +268,11 @@ class Fetcher(fetch.FetcherBase):
 
             Lazy loading imposes some additional requirements:
 
-            1. If a custom session is passed to the constructor, it must
-               support the RFC 7233 ``Range`` header and return a response
-               with the matching ``Content-Range``. It must also return a
-               ``Content-Length`` header for :meth:`Session.head` requests.
-            2. The session must not be closed while the model is in use, even
+            1. The session must not be closed while the model is in use, even
                if the fetcher is no longer needed.
-            3. The checksum stored in the filename is not validated.
-            4. If the model is already in the cache, the laziness setting is
+            2. The checksum stored in the filename is not validated.
+            3. If the model is already in the cache, the laziness setting is
                ignored and the cached model is returned.
-            5. It does not work with ``file://`` URLs.
 
         Raises
         ------
