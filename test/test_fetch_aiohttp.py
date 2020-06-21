@@ -17,10 +17,13 @@
 """Tests for :mod:`katsdpmodels.fetch.aiohttp`."""
 
 import hashlib
+import types
+from typing import List
 
 import h5py
 import pytest
 import aiohttp
+import yarl
 
 from katsdpmodels import models, fetch
 import katsdpmodels.fetch.aiohttp as fetch_aiohttp
@@ -182,3 +185,48 @@ async def test_fetcher_caching(mock_aioresponses) -> None:
     # Not supported by aioresponses
     # assert len(mock_aioresponses.calls) == 3
     assert model1.is_closed
+
+
+def _tracing_session(urls: List[yarl.URL]) -> aiohttp.ClientSession:
+    async def record_urls(session: aiohttp.ClientSession,
+                          trace_config_ctx: types.SimpleNamespace,
+                          params: aiohttp.TraceRequestStartParams) -> None:
+        urls.append(params.url)
+
+    trace_config = aiohttp.TraceConfig()
+    trace_config.on_request_start.append(record_urls)     # type: ignore
+    return aiohttp.ClientSession(trace_configs=[trace_config])
+
+
+@pytest.mark.asyncio
+async def test_fetcher_custom_session(web_server) -> None:
+    urls: List[yarl.URL] = []
+    async with _tracing_session(urls) as session:
+        async with fetch_aiohttp.Fetcher(session=session) as fetcher:
+            assert fetcher.session is session
+            await fetcher.get(web_server('direct.alias'), DummyModel)
+        assert len(urls) == 2
+        assert not session.closed
+    assert session.closed
+
+
+@pytest.mark.asyncio
+async def test_custom_session(web_server) -> None:
+    urls: List[yarl.URL] = []
+    async with _tracing_session(urls) as session:
+        await fetch_aiohttp.fetch_model(web_server('direct.alias'), DummyModel, session=session)
+        assert len(urls) == 2
+        assert not session.closed
+    assert session.closed
+
+
+@pytest.mark.asyncio
+async def test_fetcher_resolve(web_server) -> None:
+    url = web_server('indirect.alias')
+    async with fetch_aiohttp.Fetcher() as fetcher:
+        urls = await fetcher.resolve(url)
+    assert urls == [
+        web_server('indirect.alias'),
+        web_server('direct.alias'),
+        web_server('rfi_mask_ranges.h5')
+    ]

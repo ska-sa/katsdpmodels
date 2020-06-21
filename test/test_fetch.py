@@ -337,6 +337,53 @@ def test_fetcher_caching(mock_responses) -> None:
     assert model1.is_closed
 
 
+class DummySession(requests.Session):
+    def __init__(self) -> None:
+        super().__init__()
+        self.closed = False
+        self.calls = 0
+
+    def request(self, method: str, url: str, **kwargs) -> requests.Response:   # type: ignore
+        assert not self.closed
+        self.calls += 1
+        return super().request(method, url, **kwargs)
+
+    def close(self) -> None:
+        super().close()
+        self.closed = True
+
+
+def test_fetcher_custom_session(web_server) -> None:
+    session = DummySession()
+    with session:
+        with fetch_requests.Fetcher(session=session) as fetcher:
+            assert fetcher.session is session
+            fetcher.get(web_server('direct.alias'), DummyModel)
+        assert session.calls == 2
+        assert not session.closed
+    assert session.closed
+
+
+def test_custom_session(web_server) -> None:
+    session = DummySession()
+    with session:
+        fetch_requests.fetch_model(web_server('direct.alias'), DummyModel, session=session)
+        assert session.calls == 2
+        assert not session.closed
+    assert session.closed
+
+
+def test_fetcher_resolve(web_server) -> None:
+    url = web_server('indirect.alias')
+    with fetch_requests.Fetcher() as fetcher:
+        urls = fetcher.resolve(url)
+    assert urls == [
+        web_server('indirect.alias'),
+        web_server('direct.alias'),
+        web_server('rfi_mask_ranges.h5')
+    ]
+
+
 def test_lazy(web_server) -> None:
     with fetch_requests.Fetcher() as fetcher:
         model = fetcher.get(web_server('rfi_mask_ranges.h5'), DummyModel, lazy=True)
