@@ -58,7 +58,7 @@ class FileTypeError(ModelError):
 
 
 class ModelVersionError(ModelError):
-    """The ``model_version`` attribute was missing."""
+    """The ``model_version`` attribute was missing or of the wrong type."""
 
 
 class ModelTypeError(ModelError):
