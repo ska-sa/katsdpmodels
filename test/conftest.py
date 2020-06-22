@@ -73,12 +73,11 @@ def mock_aioresponses() -> Generator[aioresponses.aioresponses, None, None]:
 
 @pytest.fixture
 def web_server() -> Generator[Callable[[str], str], None, None]:
-    """Fixture that runs an aiohttp web server in a separate thread.
+    """Fixture that runs a Tornado web server in a separate thread.
 
     It makes the test data available. The return value is a function that
     converts a relative URL to an absolute one for the server.
     """
-
     async def server_coro(info_future: 'concurrent.futures.Future[_Info]') -> None:
         try:
             data_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data')

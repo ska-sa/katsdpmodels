@@ -63,7 +63,7 @@ class Response:
 
     @property
     def content_type(self) -> Optional[str]:
-        """The MIME content type of the request.
+        """Return the MIME content type of the request.
 
         Any parameters (like encoding) are stripped off. If the Content-Type
         header is missing or it is application/octet-stream, returns

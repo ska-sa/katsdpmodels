@@ -152,12 +152,12 @@ class Fetcher(fetch.FetcherBase):
 
 async def fetch_model(url: str, model_class: Type[_M], *,
                       session: Optional[aiohttp.ClientSession] = None) -> _M:
-    """Convenience function for retrieving a single model.
+    """Retrieve a single model.
 
-    This should only be used when loading just a single model. If multiple
-    models will be used instead, construct an instance of :class:`Fetcher`
-    and use it to fetch models, as this will allow models that turn out to be
-    the same to be shared.
+    This is a convenience function that should only be used when loading just a
+    single model. If multiple models will be used instead, construct an
+    instance of :class:`Fetcher` and use it to fetch models, as this will allow
+    models that turn out to be the same to be shared.
     """
     # Custom cache so that fetcher won't close the model
     model_cache: Dict[str, models.Model] = {}
