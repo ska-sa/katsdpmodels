@@ -19,17 +19,21 @@
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 import io
+import numbers
 import urllib.parse
 import h5py
-from typing import Optional, Union, Any, ClassVar, Type, TypeVar, overload
+from typing import Mapping, Optional, Any, ClassVar, Type, TypeVar, overload
+from typing_extensions import Literal
 
 import numpy as np
+import numpy.lib.recfunctions
 import strict_rfc3339
 
 
 _E = TypeVar('_E', bound='ModelError')
 _M = TypeVar('_M', bound='Model')
 _H = TypeVar('_H', bound='SimpleHDF5Model')
+_T = TypeVar('_T')
 
 
 class ModelError(ValueError):
@@ -50,7 +54,11 @@ class ModelError(ValueError):
 
 
 class FileTypeError(ModelError):
-    """The file type (as determined by extension) was not recognised."""
+    """The file type (as determined by Content-Type or extension) was not recognised."""
+
+
+class ModelVersionError(ModelError):
+    """The ``model_version`` attribute was missing or of the wrong type."""
 
 
 class ModelTypeError(ModelError):
@@ -99,6 +107,9 @@ class Model(ABC):
     target: Optional[str] = None
     comment: Optional[str] = None
     author: Optional[str] = None
+    # It's required in loaded files, but optional here to allow models to be
+    # built programmatically.
+    version: Optional[int] = None
     created: Optional[datetime] = None
 
     @classmethod
@@ -151,7 +162,7 @@ class SimpleHDF5Model(Model):
     It does not handle lazy loading: the :meth:`from_hdf5` class method must
     load all the data out of the HDF5 file as it will be closed by the caller.
     The implementation of :meth:`from_hdf5` does not need to pull out the
-    generic metadata (comment, target, author, created).
+    generic metadata (comment, target, author, created, version).
     """
 
     @classmethod
@@ -166,16 +177,21 @@ class SimpleHDF5Model(Model):
                 if not parts.path.endswith(('.h5', '.hdf5')):
                     raise FileTypeError(f'Filename extension not recognised in {url}')
             with h5py.File(file, 'r') as hdf5:
-                model_type = ensure_str(hdf5.attrs.get('model_type'))
+                model_type = get_hdf5_attr(hdf5.attrs, 'model_type', str)
                 if model_type != cls.model_type:
                     raise ModelTypeError(
                         f'Expected a model of type {cls.model_type!r}, not {model_type!r}')
                 model = cls.from_hdf5(hdf5)
                 try:
-                    model.comment = ensure_str(hdf5.attrs.get('model_comment'))
-                    model.target = ensure_str(hdf5.attrs.get('model_target'))
-                    model.author = ensure_str(hdf5.attrs.get('model_author'))
-                    created = ensure_str(hdf5.attrs.get('model_created'))
+                    model.comment = get_hdf5_attr(hdf5.attrs, 'model_comment', str)
+                    model.target = get_hdf5_attr(hdf5.attrs, 'model_target', str)
+                    model.author = get_hdf5_attr(hdf5.attrs, 'model_author', str)
+                    try:
+                        model.version = get_hdf5_attr(hdf5.attrs, 'model_version', int,
+                                                      required=True)
+                    except (KeyError, TypeError) as exc:
+                        raise ModelVersionError(str(exc)) from exc
+                    created = get_hdf5_attr(hdf5.attrs, 'model_created', str)
                     if created is not None:
                         try:
                             model.created = rfc3339_to_datetime(created)
@@ -198,33 +214,54 @@ class SimpleHDF5Model(Model):
 
 
 @overload
-def ensure_str(s: None) -> None: ...
+def get_hdf5_attr(attrs: Mapping[str, object], name: str, required_type: Type[_T], *,
+                  required: Literal[True]) -> _T: ...
+
+
 @overload
-def ensure_str(s: Union[bytes, str]) -> str: ...
+def get_hdf5_attr(attrs: Mapping[str, object], name: str, required_type: Type[_T], *,
+                  required: bool = False) -> Optional[_T]: ...
 
 
-def ensure_str(s):
-    """Decode bytes to string if necessary.
+def get_hdf5_attr(attrs, name, required_type, *, required=False):
+    """Retrieve an attribute from an HDF5 object and verify its type.
 
-    This is provided to work around for
-    https://github.com/h5py/h5py/issues/379. For convenience, ``None`` can
-    also be passed.
+    Pass the ``attrs`` attribute of the HDF5 file, group or dataset as the
+    `attrs` parameter. If the `name` is not present, returns ``None``, unless
+    ``required=True`` is passed.
+
+    The implementation includes a workaround for
+    https://github.com/h5py/h5py/issues/379, which will decode byte attributes
+    to Unicode. It also turns numpy integer types into plain integers.
 
     Raises
     ------
+    KeyError
+        if `name` is not present and `required` is true.
     TypeError
-        if `s` is not :class:`bytes`, :class:`str` or ``None``.
+        if `name` is present but is not of type `type`.
     UnicodeDecodeError
-        if `s` is :class:`bytes` and is not valid UTF-8.
+        if the attribute is :class:`bytes` that are not valid UTF-8 (only if
+        `type` is :class:`str`).
     """
-    if s is None:
-        return s
-    elif isinstance(s, str):
-        return s
-    elif isinstance(s, bytes):
-        return s.decode('utf-8')
+    try:
+        value = attrs[name]
+    except KeyError:
+        if required:
+            # The original message from h5py is less readable
+            raise KeyError(f'attribute {name!r} is missing') from None
+        else:
+            return None
+    actual_type = type(value)
+    if actual_type == required_type:
+        return value
+    elif required_type == str and isinstance(value, bytes):
+        return value.decode('utf-8')
+    elif (required_type == int and isinstance(value, numbers.Integral)
+            and not isinstance(value, bool)):
+        return int(value)
     else:
-        raise TypeError('Expected bytes, str or None, received {}'.format(type(s)))
+        raise TypeError(f'Expected {required_type} for {name!r}, received {actual_type}')
 
 
 def rfc3339_to_datetime(timestamp: str) -> datetime:

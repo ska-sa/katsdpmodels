@@ -17,6 +17,7 @@
 """Tests for :mod:`katsdpmodels.models`."""
 
 import hashlib
+from typing import Dict
 
 import numpy as np
 import pytest
@@ -47,17 +48,48 @@ def test_eq_hash() -> None:
     assert model4 != 1
 
 
-@pytest.mark.parametrize('s', ['foo', b'foo'])
-def test_ensure_str(s):
-    assert models.ensure_str(s) == 'foo'
+def test_get_hdf5_attr_missing() -> None:
+    attrs: Dict[str, object] = {}
+    assert models.get_hdf5_attr(attrs, 'missing', str) is None
+    with pytest.raises(KeyError):
+        models.get_hdf5_attr({}, 'missing', str, required=True)
 
 
-def test_ensure_str_type_error():
+def test_get_hdf5_attr_type_mismatch() -> None:
+    with pytest.raises(TypeError, match="Expected <class 'int'> for 'foo', received <class 'str'>"):
+        models.get_hdf5_attr({'foo': 'bar'}, 'foo', int)
+
+
+def test_get_hdf5_attr_decode_bytes() -> None:
+    assert models.get_hdf5_attr({'foo': 'café'.encode()}, 'foo', str) == 'café'
+
+
+def test_get_hdf5_attr_numpy_int() -> None:
+    assert models.get_hdf5_attr({'foo': np.int64(1)}, 'foo', int) == 1
+
+
+def test_get_hdf5_attr_bad_utf8() -> None:
+    with pytest.raises(UnicodeDecodeError):
+        models.get_hdf5_attr({'foo': b'\xff'}, 'foo', str)
+    # Should raise the type error first if we aren't expecting strings
     with pytest.raises(TypeError):
-        models.ensure_str(1)
+        models.get_hdf5_attr({'foo': b'\xff'}, 'foo', int)
 
 
-def test_require_columns_missing_column():
+def test_get_hdf5_attr_bool_not_int() -> None:
+    with pytest.raises(TypeError):
+        models.get_hdf5_attr({'foo': True}, 'foo', int)
+    with pytest.raises(TypeError):
+        models.get_hdf5_attr({'foo': 2}, 'foo', bool)
+
+
+def test_get_hdf5_attr_success() -> None:
+    attrs = {'string': 'hello', 'int': 42}
+    assert models.get_hdf5_attr(attrs, 'string', str) == 'hello'
+    assert models.get_hdf5_attr(attrs, 'int', int) == 42
+
+
+def test_require_columns_missing_column() -> None:
     dtype1 = np.dtype([('a', 'f8'), ('b', 'i4')])
     dtype2 = np.dtype([('a', 'f8'), ('c', 'i4')])
     array = np.zeros((5,), dtype1)
@@ -65,14 +97,14 @@ def test_require_columns_missing_column():
         models.require_columns(array, dtype2)
 
 
-def test_require_columns_unstructured():
+def test_require_columns_unstructured() -> None:
     dtype = np.dtype([('a', 'f8'), ('b', 'i4')])
     array = np.zeros((5,), np.float32)
     with pytest.raises(models.DataError, match='Array does not have named columns'):
         models.require_columns(array, dtype)
 
 
-def test_require_columns_dtype_mismatch():
+def test_require_columns_dtype_mismatch() -> None:
     dtype1 = np.dtype([('a', 'f8')])
     dtype2 = np.dtype([('a', 'i4')])
     array = np.zeros((5,), dtype1)
@@ -80,7 +112,7 @@ def test_require_columns_dtype_mismatch():
         models.require_columns(array, dtype2)
 
 
-def test_require_columns_same_dtype():
+def test_require_columns_same_dtype() -> None:
     dtype = np.dtype([('a', 'f8'), ('b', 'i4')])
     array = np.array([(1.5, 1), (3.5, 3)], dtype=dtype)
     out = models.require_columns(array, dtype)
@@ -88,7 +120,7 @@ def test_require_columns_same_dtype():
     assert np.shares_memory(array, out)
 
 
-def test_require_columns_change_byteorder():
+def test_require_columns_change_byteorder() -> None:
     dtype1 = np.dtype([('a', '>f8')])
     dtype2 = np.dtype([('a', '<f8')])
     array = np.array([1.0, 1.5, 2.0], dtype=dtype1)
@@ -99,7 +131,7 @@ def test_require_columns_change_byteorder():
     assert out.dtype['a'].byteorder == dtype2['a'].byteorder
 
 
-def test_require_columns_extra_column():
+def test_require_columns_extra_column() -> None:
     dtype1 = np.dtype([('a', 'f8'), ('b', 'f8')])
     dtype2 = np.dtype([('b', 'f8')])
     array = np.array([(1.0, 10.0), (1.5, 15.0), (2.0, 20.0)], dtype=dtype1)

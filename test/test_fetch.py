@@ -207,6 +207,16 @@ def test_fetch_model_model_type_error(filename, web_server) -> None:
     assert 'rfi_mask' in str(exc_info.value)
 
 
+@pytest.mark.parametrize('filename', ['bad_model_version.h5', 'no_model_version.h5'])
+def test_fetch_model_model_version_error(filename, web_server) -> None:
+    url = web_server(filename)
+    with pytest.raises(models.ModelVersionError) as exc_info:
+        fetch.fetch_model(url, DummyModel)
+    assert exc_info.value.url == url
+    assert exc_info.value.original_url == url
+    assert 'model_version' in str(exc_info.value)
+
+
 def test_fetch_model_cached_model_type_error(web_server) -> None:
     class OtherModel(models.SimpleHDF5Model):
         model_type = 'other'
