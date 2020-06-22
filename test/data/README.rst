@@ -30,6 +30,8 @@ bad_model_version.h5
     Contains a ``model_version`` that is a string instead of an int.
 no_model_version.h5
     The ``model_version`` field is absent.
+bad_created.h5
+    model_created is not correctly formatted.
 not_hdf5.h5
     Not a valid HDF5 file
 rfi_mask_bad_format.h5
@@ -42,8 +44,6 @@ rfi_mask_ranges_is_group.h5
     There is a group called ``ranges`` rather than a dataset.
 wrong_extension.blah
     Copy of rfi_mask_ranges.h5 with a different extension.
-invalid_created.h5
-    model_created is not correctly formatted.
 
 Other
 -----

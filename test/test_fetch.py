@@ -228,8 +228,8 @@ def test_fetch_model_model_type_error(filename, web_server) -> None:
     assert exc_info.value.original_url == url
 
 
-def test_fetch_model_invalid_created(web_server) -> None:
-    url = web_server('invalid_created.h5')
+def test_fetch_model_bad_created(web_server) -> None:
+    url = web_server('bad_created.h5')
     with pytest.raises(models.DataError, match='Invalid creation timestamp') as exc_info:
         fetch_requests.fetch_model(url, DummyModel)
     assert exc_info.value.url == url
