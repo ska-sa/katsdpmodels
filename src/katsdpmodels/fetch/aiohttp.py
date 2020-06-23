@@ -72,7 +72,6 @@ class Fetcher(fetch.FetcherBase):
         super().__init__(model_cache=model_cache)
         if session is None:
             self._session = aiohttp.ClientSession()
-            # TODO: support for file:// URLs
             self._close_session = True
         else:
             self._session = session
