@@ -177,7 +177,7 @@ class SimpleHDF5Model(Model):
                 if content_type != 'application/x-hdf5':
                     raise FileTypeError(f'Expected application/x-hdf5, not {content_type}')
             else:
-                parts = urllib.parse.urlparse(url)
+                parts = urllib.parse.urlsplit(url)
                 path = urllib.parse.unquote(parts.path)
                 if not path.endswith(('.h5', '.hdf5')):
                     raise FileTypeError(f'Filename extension not recognised in {url}')

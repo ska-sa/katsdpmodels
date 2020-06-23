@@ -146,7 +146,7 @@ class FetcherBase:
 
     def _resolve(self, url: str) -> Generator[Request, Response, List[str]]:
         chain = [url]
-        parts = urllib.parse.urlparse(url)
+        parts = urllib.parse.urlsplit(url)
         while urllib.parse.unquote(parts.path).endswith('.alias'):
             if len(chain) > MAX_ALIASES:
                 raise models.TooManyAliasesError.with_urls(
@@ -160,7 +160,7 @@ class FetcherBase:
                 assert isinstance(response, TextResponse)
                 rel_path = response.text.rstrip()
                 new_url = urllib.parse.urljoin(response.url, rel_path)
-                new_scheme = urllib.parse.urlparse(new_url).scheme
+                new_scheme = urllib.parse.urlsplit(new_url).scheme
                 if new_scheme == 'file' and parts.scheme != 'file':
                     raise models.LocalRedirectError.with_urls(
                         f'Remote {url} tried to redirect to local {new_url}',
@@ -173,7 +173,7 @@ class FetcherBase:
             chain.append(new_url)
             _logger.debug('Redirecting from %s to %s', url, new_url)
             url = new_url
-            parts = urllib.parse.urlparse(url)
+            parts = urllib.parse.urlsplit(url)
         return chain
 
     def _handle_file_scheme(self, request: Request, lazy: bool = False) -> Response:
@@ -182,7 +182,7 @@ class FetcherBase:
         Subclasses can delegate to this function to deal with such URLs.
         """
         assert request.response_type in {ResponseType.TEXT, ResponseType.FILE}
-        parts = urllib.parse.urlparse(request.url)
+        parts = urllib.parse.urlsplit(request.url)
         path = pathlib.Path(urllib.parse.unquote(parts.path)).resolve()
         response: Response
         if request.response_type == ResponseType.TEXT:
@@ -226,7 +226,7 @@ class FetcherBase:
                 url = response.url
                 if response.content is not None:
                     checksum = hashlib.sha256(response.content).hexdigest()
-                    parts = urllib.parse.urlparse(url)
+                    parts = urllib.parse.urlsplit(url)
                     match = re.search(r'/sha256_([a-z0-9]+)\.[^/]+$',
                                       urllib.parse.unquote(parts.path))
                     if match and checksum != match.group(1):

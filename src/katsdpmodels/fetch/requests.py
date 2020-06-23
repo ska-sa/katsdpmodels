@@ -199,7 +199,7 @@ class Fetcher(fetch.FetcherBase):
     def _handle_request(self, request: fetch.Request, *,
                         lazy: bool = False) -> fetch.Response:
         assert request.response_type in {fetch.ResponseType.TEXT, fetch.ResponseType.FILE}
-        parts = urllib.parse.urlparse(request.url)
+        parts = urllib.parse.urlsplit(request.url)
         if parts.scheme == 'file':
             return self._handle_file_scheme(request, lazy)
         elif request.response_type == fetch.ResponseType.TEXT:
