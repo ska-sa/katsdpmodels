@@ -159,12 +159,13 @@ class FetcherBase:
                 response = yield request
                 assert isinstance(response, TextResponse)
                 rel_path = response.text.rstrip()
+                rel_parts = urllib.parse.urlsplit(rel_path)
+                if rel_parts.scheme or rel_parts.netloc:
+                    raise models.AbsoluteAliasError.with_urls(
+                        f'Aliases may only contain relative URLs, not {rel_path!r}',
+                        url=url, original_url=chain[0]
+                    )
                 new_url = urllib.parse.urljoin(response.url, rel_path)
-                new_scheme = urllib.parse.urlsplit(new_url).scheme
-                if new_scheme == 'file' and parts.scheme != 'file':
-                    raise models.LocalRedirectError.with_urls(
-                        f'Remote {url} tried to redirect to local {new_url}',
-                        url=url, original_url=chain[0])
                 self._alias_cache[url] = new_url
             if new_url in chain:
                 raise models.TooManyAliasesError.with_urls(

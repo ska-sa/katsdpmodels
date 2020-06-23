@@ -61,9 +61,9 @@ async def test_fetch_model_too_many_aliases(web_server, monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_fetch_model_to_file_alias(web_server) -> None:
+async def test_fetch_model_absolute_alias(web_server) -> None:
     url = web_server('to_file.alias')
-    with pytest.raises(models.LocalRedirectError) as exc_info:
+    with pytest.raises(models.AbsoluteAliasError) as exc_info:
         await fetch_aiohttp.fetch_model(url, DummyModel)
     assert exc_info.value.url == url
     assert exc_info.value.original_url == url

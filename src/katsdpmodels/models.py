@@ -81,8 +81,8 @@ class TooManyAliasesError(ModelError):
     """The limit on the number of alias redirections was reached."""
 
 
-class LocalRedirectError(ModelError):
-    """An http(s) alias retried to redirect to a local file."""
+class AbsoluteAliasError(ModelError):
+    """An alias retried to redirect to an absolute URL."""
 
 
 class Model(ABC):
