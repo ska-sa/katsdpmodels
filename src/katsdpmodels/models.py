@@ -81,6 +81,10 @@ class TooManyAliasesError(ModelError):
     """The limit on the number of alias redirections was reached."""
 
 
+class AbsoluteAliasError(ModelError):
+    """An alias retried to redirect to an absolute URL."""
+
+
 class Model(ABC):
     """Base class for models.
 
@@ -95,7 +99,7 @@ class Model(ABC):
     Subclassing should generally be done in two layers:
 
     1. A class that defines `model_type` and defines the interface for that
-       model type. This will be passed to :class:`.Fetcher` to indicate what
+       model type. This will be passed to fetchers to indicate what
        model type is expected. Due to limitations in mypy, this should not
        use ``@abstractmethod`` for the interface methods.
     2. A concrete implementation that defines `model_format`.
@@ -162,7 +166,7 @@ class SimpleHDF5Model(Model):
     It does not handle lazy loading: the :meth:`from_hdf5` class method must
     load all the data out of the HDF5 file as it will be closed by the caller.
     The implementation of :meth:`from_hdf5` does not need to pull out the
-    generic metadata (comment, target, author, created, version).
+    generic metadata (comment, target, author etc).
     """
 
     @classmethod
@@ -173,8 +177,9 @@ class SimpleHDF5Model(Model):
                 if content_type != 'application/x-hdf5':
                     raise FileTypeError(f'Expected application/x-hdf5, not {content_type}')
             else:
-                parts = urllib.parse.urlparse(url)
-                if not parts.path.endswith(('.h5', '.hdf5')):
+                parts = urllib.parse.urlsplit(url)
+                path = urllib.parse.unquote(parts.path)
+                if not path.endswith(('.h5', '.hdf5')):
                     raise FileTypeError(f'Filename extension not recognised in {url}')
             with h5py.File(file, 'r') as hdf5:
                 model_type = get_hdf5_attr(hdf5.attrs, 'model_type', str)

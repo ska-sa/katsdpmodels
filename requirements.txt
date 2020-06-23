@@ -1,11 +1,16 @@
+aiohttp
 astropy
+async-timeout                 # via aiohttp
+attrs                         # via aiohttp
 certifi                       # via requests
-chardet                       # via requests
+chardet                       # via requests, aiohttp
 h5py
 idna                          # via requests
+idna-ssl                      # via aiohttp
+multidict                     # via aiohttp
 numpy
 requests
-requests-file==1.5.1
-strict_rfc3339==0.7
-typing_extensions
+strict-rfc3339
+typing-extensions
 urllib3                       # via requests
+yarl                          # via aiohttp

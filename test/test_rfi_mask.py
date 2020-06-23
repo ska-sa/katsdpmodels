@@ -20,13 +20,14 @@ import astropy.units as u
 import numpy as np
 import pytest
 
-from katsdpmodels import models, fetch, rfi_mask
+from katsdpmodels import models, rfi_mask
+import katsdpmodels.fetch.requests as fetch_requests
 from test_utils import get_data_url
 
 
 @pytest.fixture
 def ranges_model(web_server):
-    with fetch.fetch_model(web_server('rfi_mask_ranges.h5'), rfi_mask.RFIMask) as model:
+    with fetch_requests.fetch_model(web_server('rfi_mask_ranges.h5'), rfi_mask.RFIMask) as model:
         yield model
 
 
@@ -93,24 +94,25 @@ def test_max_baseline_length_empty(ranges_model):
 def test_missing_dataset(filename, mock_responses):
     url = get_data_url(filename)
     with pytest.raises(models.DataError, match='Model is missing ranges dataset'):
-        fetch.fetch_model(url, rfi_mask.RFIMask)
+        fetch_requests.fetch_model(url, rfi_mask.RFIMask)
 
 
 def test_bad_shape(mock_responses):
     url = get_data_url('rfi_mask_ranges_2d.h5')
     with pytest.raises(models.DataError, match='ranges dataset should have 1 dimension, found 2'):
-        fetch.fetch_model(url, rfi_mask.RFIMask)
+        fetch_requests.fetch_model(url, rfi_mask.RFIMask)
 
 
 def test_bad_model_format(mock_responses):
     url = get_data_url('rfi_mask_bad_format.h5')
     with pytest.raises(models.ModelFormatError) as exc_info:
-        fetch.fetch_model(url, rfi_mask.RFIMask)
+        fetch_requests.fetch_model(url, rfi_mask.RFIMask)
     assert str(exc_info.value) == "Unknown model_format 'not_ranges' for rfi_mask"
 
 
 def test_metadata(web_server):
-    with fetch.fetch_model(web_server('rfi_mask_ranges_metadata.h5'), rfi_mask.RFIMask) as model:
+    with fetch_requests.fetch_model(
+            web_server('rfi_mask_ranges_metadata.h5'), rfi_mask.RFIMask) as model:
         assert model.comment == 'Test model'
         assert model.author == 'Test author'
         assert model.target == 'Test target'
