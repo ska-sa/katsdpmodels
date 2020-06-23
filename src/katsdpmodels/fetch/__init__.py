@@ -231,7 +231,7 @@ class FetcherBase:
                     match = re.search(r'/sha256_([a-z0-9]+)\.[^/]+$',
                                       urllib.parse.unquote(parts.path))
                     if match and checksum != match.group(1):
-                        raise models.ChecksumError('Content did not match checksum in URL')
+                        raise models.ChecksumError(f'Content at {url} did not match checksum')
                 try:
                     new_model = model_class.from_file(response.file, url,
                                                       content_type=response.content_type)
