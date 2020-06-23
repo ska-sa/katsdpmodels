@@ -115,6 +115,10 @@ class FileResponse(Response):
 class FetcherBase:
     """Base class for HTTP fetcher implementations.
 
+    It caches every URL it fetches (ignoring any cache control headers), so it
+    should not be reused over a long time.  It is best suited to fetching a
+    batch of models, some of which may turn out to be aliases of each other.
+
     It does not perform any I/O itself. Instead, it provides generators
     that yield :class:`Requests <Request>` and expects to receive
     :class:`Responses <Response>` in reply. The subclass is responsible for
