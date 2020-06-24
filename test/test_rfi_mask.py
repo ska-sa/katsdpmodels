@@ -17,6 +17,7 @@
 """Tests for :mod:`katsdpmodels.rfi_mask`"""
 
 import astropy.units as u
+import astropy.table
 import numpy as np
 import pytest
 
@@ -123,3 +124,40 @@ def test_metadata(web_server):
         assert model.author == 'Test author'
         assert model.target == 'Test target'
         assert model.created.isoformat() == '2020-06-11T11:11:00+00:00'
+
+
+def test_construct_bad_units():
+    ranges = astropy.table.Table(
+        [(1, 2, 3), (4, 5, 6), (7, 8, 9)],
+        names=('min_frequency', 'max_frequency', 'max_baseline'),
+        dtype=(np.float64, np.float64, np.float64)
+    )
+    # No units at all
+    with pytest.raises(u.UnitConversionError):
+        rfi_mask.RFIMaskRanges(ranges, True)
+    # Incompatible units for baseline
+    ranges['min_frequency'].unit = u.Hz
+    ranges['max_frequency'].unit = u.Hz
+    ranges['max_baseline'].unit = u.Hz
+    with pytest.raises(u.UnitConversionError):
+        rfi_mask.RFIMaskRanges(ranges, True)
+
+
+def test_construct_incompatible_types():
+    ranges = astropy.table.Table(
+        [(1, 2, 3), (4, 5, 6), ('a', 'b', 'c')],
+        names=('min_frequency', 'max_frequency', 'max_baseline'),
+        dtype=(np.float64, np.float64, 'S1')
+    )
+    with pytest.raises(ValueError):
+        rfi_mask.RFIMaskRanges(ranges, True)
+
+
+def test_construct_missing_column():
+    ranges = astropy.table.Table(
+        [(1, 2, 3), (4, 5, 6)],
+        names=('min_frequency', 'max_frequency'),
+        dtype=(np.float64, np.float64)
+    )
+    with pytest.raises(KeyError):
+        rfi_mask.RFIMaskRanges(ranges, True)

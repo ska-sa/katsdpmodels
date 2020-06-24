@@ -20,10 +20,11 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 import io
 import urllib.parse
-import h5py
-from typing import Mapping, Optional, Any, ClassVar, Type, TypeVar, overload
+import pathlib
+from typing import Mapping, Optional, Any, ClassVar, Type, TypeVar, Union, overload
 from typing_extensions import Literal
 
+import h5py
 import numpy as np
 import numpy.lib.recfunctions
 import strict_rfc3339
@@ -129,6 +130,15 @@ class Model(ABC):
         type; otherwise `url` may be used instead.
         """
 
+    @abstractmethod
+    def to_file(self, file: Union[str, pathlib.Path, io.IOBase], *,
+                content_type: Optional[str] = None) -> None:
+        """Write a model to file.
+
+        If `content_type` is given, it should be used to determine the file
+        type; otherwise the filename may be used.
+        """
+
     def close(self) -> None:
         """Close external resources associated with the model.
 
@@ -207,10 +217,55 @@ class SimpleHDF5Model(Model):
                 else:
                     return model
 
+    def to_file(self, file: Union[str, pathlib.Path, io.IOBase], *,
+                content_type: Optional[str] = None) -> None:
+        if self.version is None:
+            raise ValueError('Version must be set before writing file')
+        if content_type is not None:
+            if content_type != 'application/x-hdf5':
+                raise FileTypeError(f'Expected application/x-hdf5, not {content_type}')
+        else:
+            if isinstance(file, (str, pathlib.Path)):
+                path = pathlib.Path(file)
+            else:
+                path = pathlib.Path(file.name)   # type: ignore
+            if path.suffix not in {'.h5', '.hdf5'}:
+                raise FileTypeError(
+                    f'Expected extension of .h5 or .hdf5, not {path.suffix} '
+                    '(use content_type to override if necessary)'
+                )
+        if isinstance(file, (str, pathlib.Path)):
+            hdf5 = h5py.File(str(file), 'w')
+        else:
+            hdf5 = h5py.File(file, 'w')
+        with hdf5:
+            hdf5.attrs['model_version'] = self.version
+            hdf5.attrs['model_type'] = self.model_type
+            hdf5.attrs['model_format'] = self.model_format
+            if self.comment is not None:
+                hdf5.attrs['model_comment'] = self.comment
+            if self.author is not None:
+                hdf5.attrs['model_author'] = self.author
+            if self.target is not None:
+                hdf5.attrs['model_target'] = self.target
+            if self.created is not None:
+                hdf5.attrs['model_created'] = strict_rfc3339.timestamp_to_rfc3339_utcoffset(
+                    self.created.timestamp()
+                )
+            self.to_hdf5(hdf5)
+
     @classmethod
     @abstractmethod
     def from_hdf5(cls: Type[_H], hdf5: h5py.File) -> _H:
         """Load a model from an HDF5 file.
+
+        Subclasses will implement this method, but it is not intended to be
+        used directly.
+        """
+
+    @abstractmethod
+    def to_hdf5(self, hdf5: h5py.File) -> None:
+        """Write a model to an HDF5 file.
 
         Subclasses will implement this method, but it is not intended to be
         used directly.

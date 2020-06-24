@@ -254,6 +254,9 @@ def test_fetch_model_cached_model_type_error(web_server) -> None:
         def from_hdf5(cls, hdf5: h5py.File) -> 'OtherModel':
             return cls()
 
+        def to_hdf5(self, hdf5: h5py.File) -> None:
+            pass
+
     url = web_server('rfi_mask_ranges.h5')
     with fetch_requests.Fetcher() as fetcher:
         fetcher.get(url, DummyModel)

@@ -47,6 +47,7 @@ def get_file_url(filename: str) -> str:
 
 class DummyModel(models.SimpleHDF5Model):
     model_type: ClassVar[Literal['rfi_mask']] = 'rfi_mask'
+    model_format: ClassVar[Literal['ranges']] = 'ranges'
 
     def __init__(self, ranges: Any) -> None:
         self.ranges = ranges
@@ -55,6 +56,9 @@ class DummyModel(models.SimpleHDF5Model):
     @classmethod
     def from_hdf5(cls, hdf5: h5py.File) -> 'DummyModel':
         return cls(hdf5['/ranges'][:])
+
+    def to_hdf5(self, hdf5: h5py.File) -> None:
+        hdf5.create_dataset('ranges', data=self.ranges, track_times=False)
 
     def close(self) -> None:
         super().close()
