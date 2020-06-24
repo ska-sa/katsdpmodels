@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 import io
 import urllib.parse
 import pathlib
-from typing import Mapping, Optional, Any, ClassVar, Type, TypeVar, Union, overload
+from typing import Mapping, BinaryIO, Optional, Any, ClassVar, Type, TypeVar, Union, overload
 from typing_extensions import Literal
 
 import h5py
@@ -34,6 +34,9 @@ _E = TypeVar('_E', bound='ModelError')
 _M = TypeVar('_M', bound='Model')
 _H = TypeVar('_H', bound='SimpleHDF5Model')
 _T = TypeVar('_T')
+# typeshed doesn't correctly indicate that io.BytesIO and typing.BinaryIO
+# inherit from io.IOBase, so we use this type alias for file-like parameters.
+_FileLike = Union[io.IOBase, io.BytesIO, BinaryIO]
 
 
 class ModelError(ValueError):
@@ -118,7 +121,7 @@ class Model(ABC):
 
     @classmethod
     @abstractmethod
-    def from_file(cls: Type[_M], file: io.IOBase, url: str, *,
+    def from_file(cls: Type[_M], file: _FileLike, url: str, *,
                   content_type: Optional[str] = None) -> _M:
         """Load a model from raw data.
 
@@ -131,7 +134,7 @@ class Model(ABC):
         """
 
     @abstractmethod
-    def to_file(self, file: Union[str, pathlib.Path, io.IOBase], *,
+    def to_file(self, file: Union[str, pathlib.Path, _FileLike], *,
                 content_type: Optional[str] = None) -> None:
         """Write a model to file.
 
@@ -179,7 +182,7 @@ class SimpleHDF5Model(Model):
     """
 
     @classmethod
-    def from_file(cls: Type[_H], file: io.IOBase, url: str, *,
+    def from_file(cls: Type[_H], file: _FileLike, url: str, *,
                   content_type: Optional[str] = None) -> _H:
         with file:
             if content_type is not None:
@@ -217,7 +220,7 @@ class SimpleHDF5Model(Model):
                 else:
                     return model
 
-    def to_file(self, file: Union[str, pathlib.Path, io.IOBase], *,
+    def to_file(self, file: Union[str, pathlib.Path, _FileLike], *,
                 content_type: Optional[str] = None) -> None:
         if self.version is None:
             raise ValueError('Version must be set before writing file')

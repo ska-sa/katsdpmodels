@@ -178,9 +178,9 @@ def test_hdf5_to_file(clear_metadata: bool, dummy_model: DummyModel) -> None:
         dummy_model.target = None
         dummy_model.created = None
     fh = io.BytesIO()
-    dummy_model.to_file(fh, content_type='application/x-hdf5')                # type: ignore
+    dummy_model.to_file(fh, content_type='application/x-hdf5')
     fh.seek(0)
-    new_model = DummyModel.from_file(fh, 'http://test.invalid/dummy.h5',      # type: ignore
+    new_model = DummyModel.from_file(fh, 'http://test.invalid/dummy.h5',
                                      content_type='application/x-hdf5')
     assert_models_equal(dummy_model, new_model)
 
@@ -188,17 +188,17 @@ def test_hdf5_to_file(clear_metadata: bool, dummy_model: DummyModel) -> None:
 def test_hdf5_to_file_no_version(dummy_model: DummyModel) -> None:
     dummy_model.version = None
     with pytest.raises(ValueError):
-        dummy_model.to_file(io.BytesIO(), content_type='application/x-hdf5')  # type: ignore
+        dummy_model.to_file(io.BytesIO(), content_type='application/x-hdf5')
 
 
 def test_hdf5_to_file_no_content_type_or_filename(dummy_model: DummyModel) -> None:
     with pytest.raises(AttributeError):
-        dummy_model.to_file(io.BytesIO())                                     # type: ignore
+        dummy_model.to_file(io.BytesIO())
 
 
 def test_hdf5_to_file_bad_content_type(dummy_model: DummyModel) -> None:
     with pytest.raises(models.FileTypeError, match='Expected application/x-hdf5, not image/png'):
-        dummy_model.to_file(io.BytesIO(), content_type='image/png')           # type: ignore
+        dummy_model.to_file(io.BytesIO(), content_type='image/png')
 
 
 @pytest.mark.parametrize('path_type', [pathlib.Path, str])
@@ -216,6 +216,6 @@ def test_hdf5_to_file_good_extension(path_type: Union[Type[pathlib.Path], Type[s
                                      tmp_path: pathlib.Path) -> None:
     path = path_type(tmp_path / 'test.h5')
     dummy_model.to_file(path)
-    new_model = dummy_model.from_file(open(path, 'rb'), 'test.h5',            # type: ignore
+    new_model = dummy_model.from_file(open(path, 'rb'), 'test.h5',
                                       content_type='application/x-hdf5')
     assert_models_equal(dummy_model, new_model)

@@ -18,13 +18,13 @@ import contextlib
 import enum
 import hashlib
 import logging
-import io
 import pathlib
 import re
 import urllib.parse
-from typing import List, Dict, Generator, Mapping, MutableMapping, Optional, Type, TypeVar, cast
+from typing import List, Dict, Generator, Mapping, MutableMapping, Optional, Type, TypeVar
 
 from .. import models
+from ..models import _FileLike
 
 
 MAX_ALIASES = 30     #: Maximum number of aliases that will be followed to find a model
@@ -106,7 +106,7 @@ class FileResponse(Response):
     """
 
     def __init__(self, url: str, headers: Mapping[str, str],
-                 file: io.IOBase, content: Optional[bytes] = None) -> None:
+                 file: _FileLike, content: Optional[bytes] = None) -> None:
         super().__init__(url, headers)
         self.file = file
         self.content = content
@@ -200,7 +200,7 @@ class FetcherBase:
                 else:
                     content = None
                 exit_stack.pop_all()
-                response = FileResponse(path.as_uri(), {}, cast(io.IOBase, file), content)
+                response = FileResponse(path.as_uri(), {}, file, content)
         return response
 
     def _get(self, url: str, model_class: Type[_M]) -> Generator[Request, Response, _M]:

@@ -22,7 +22,7 @@ import re
 import logging
 import os
 import urllib.parse
-from typing import List, Generator, Dict, MutableMapping, Optional, Type, TypeVar, Any, cast
+from typing import List, Generator, Dict, MutableMapping, Optional, Type, TypeVar, Any
 
 import requests
 
@@ -212,7 +212,7 @@ class Fetcher(fetch.FetcherBase):
                 content = resp.content
                 file = io.BytesIO(content)
                 return fetch.FileResponse(
-                    resp.url, resp.headers, file=cast(io.IOBase, file), content=content)
+                    resp.url, resp.headers, file=file, content=content)
         else:
             fh = HttpFile(self._session, request.url)
             # TODO: make HttpFile return the full headers
