@@ -54,6 +54,15 @@ class RFIMask(models.SimpleHDF5Model):
         """
         raise NotImplementedError()      # pragma: nocover
 
+    @property
+    def mask_auto_correlations(self) -> bool:
+        """Return whether auto-correlations should be masked too.
+
+        Auto-correlations are defined as baselines with zero length, which
+        includes cross-hand polarization products.
+        """
+        raise NotImplementedError()      # pragma: nocover
+
     @classmethod
     def from_hdf5(cls, hdf5: h5py.File) -> 'RFIMask':
         model_format = models.get_hdf5_attr(hdf5.attrs, 'model_format', str) or ''
@@ -67,10 +76,15 @@ class RFIMask(models.SimpleHDF5Model):
 class RFIMaskRanges(RFIMask):
     model_format: ClassVar[Literal['rfi_format']] = 'rfi_format'
 
-    def __init__(self, ranges: astropy.table.QTable) -> None:
+    def __init__(self, ranges: astropy.table.QTable, mask_auto_correlations: bool) -> None:
         # TODO: validate the columns and units
         # TODO: document what the requirements are
         self.ranges = ranges
+        self._mask_auto_correlations = mask_auto_correlations
+
+    @property
+    def mask_auto_correlations(self) -> bool:
+        return self._mask_auto_correlations
 
     def is_masked(self, frequency: u.Quantity, baseline_length: u.Quantity):
         # Add extra axis which will broadcast with the masks
@@ -81,6 +95,8 @@ class RFIMaskRanges(RFIMask):
             & (f <= self.ranges['max_frequency'])
             & (b <= self.ranges['max_baseline'])
         )
+        if not self.mask_auto_correlations:
+            in_range &= b > 0
         return np.any(in_range, axis=-1)
 
     def max_baseline_length(self, frequency: u.Quantity):
@@ -112,4 +128,6 @@ class RFIMaskRanges(RFIMask):
         ranges['min_frequency'] <<= u.Hz
         ranges['max_frequency'] <<= u.Hz
         ranges['max_baseline'] <<= u.m
-        return cls(ranges)
+        mask_auto_correlations = models.get_hdf5_attr(
+            hdf5.attrs, 'mask_auto_correlations', bool, required=True)
+        return cls(ranges, mask_auto_correlations)

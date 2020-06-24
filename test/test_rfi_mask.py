@@ -40,22 +40,28 @@ def ranges_model(web_server):
         (110e6 * u.Hz, 2000 * u.m, False),
         (100 * u.MHz, 2 * u.km, False),
         (600e6 * u.Hz, 2000 * u.m, True),
-        (600 * u.MHz, 2 * u.km, True)
+        (600 * u.MHz, 2 * u.km, True),
+        (600 * u.MHz, 0 * u.m, False)
     ])
 def test_is_masked_scalar(frequency, baseline_length, result, ranges_model):
     assert ranges_model.is_masked(frequency, baseline_length) == result
 
 
 def test_is_masked_vector(ranges_model):
-    frequency = u.Quantity([90, 110, 90, 110, 300, 600, 600], u.MHz)
-    baseline_length = u.Quantity([2, 2, 2000, 2000, 2, 2, 2000], u.m)
+    frequency = u.Quantity([90, 110, 90, 110, 300, 600, 600, 600], u.MHz)
+    baseline_length = u.Quantity([2, 2, 2000, 2000, 2, 2, 2000, 0], u.m)
     result = ranges_model.is_masked(frequency, baseline_length)
-    expected = np.array([False, True, False, False, False, True, True])
+    expected = np.array([False, True, False, False, False, True, True, False])
     np.testing.assert_array_equal(result, expected)
     # Test broadcasting of inputs against each other
     result = ranges_model.is_masked(frequency, 2 * u.m)
-    expected = np.array([False, True, False, True, False, True, True])
+    expected = np.array([False, True, False, True, False, True, True, True])
     np.testing.assert_array_equal(result, expected)
+
+
+def test_is_masked_auto_correlations(ranges_model):
+    ranges_model = rfi_mask.RFIMaskRanges(ranges_model.ranges, True)
+    assert ranges_model.is_masked(600 * u.MHz, 0 * u.m)
 
 
 @pytest.mark.parametrize(

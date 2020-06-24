@@ -19,7 +19,6 @@
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 import io
-import numbers
 import urllib.parse
 import h5py
 from typing import Mapping, Optional, Any, ClassVar, Type, TypeVar, overload
@@ -237,7 +236,7 @@ def get_hdf5_attr(attrs, name, required_type, *, required=False):
 
     The implementation includes a workaround for
     https://github.com/h5py/h5py/issues/379, which will decode byte attributes
-    to Unicode. It also turns numpy integer types into plain integers.
+    to Unicode. It also turns numpy scalars into plain Python types.
 
     Raises
     ------
@@ -257,14 +256,13 @@ def get_hdf5_attr(attrs, name, required_type, *, required=False):
             raise KeyError(f'attribute {name!r} is missing') from None
         else:
             return None
+    if isinstance(value, np.generic):
+        value = value.item()
     actual_type = type(value)
     if actual_type == required_type:
         return value
     elif required_type == str and isinstance(value, bytes):
         return value.decode('utf-8')
-    elif (required_type == int and isinstance(value, numbers.Integral)
-            and not isinstance(value, bool)):
-        return int(value)
     else:
         raise TypeError(f'Expected {required_type} for {name!r}, received {actual_type}')
 
