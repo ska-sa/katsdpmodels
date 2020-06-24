@@ -74,7 +74,7 @@ class RFIMask(models.SimpleHDF5Model):
 
 
 class RFIMaskRanges(RFIMask):
-    model_format: ClassVar[Literal['rfi_format']] = 'rfi_format'
+    model_format: ClassVar[Literal['ranges']] = 'ranges'
 
     def __init__(self, ranges: astropy.table.Table, mask_auto_correlations: bool) -> None:
         cols = ('min_frequency', 'max_frequency', 'max_baseline')
