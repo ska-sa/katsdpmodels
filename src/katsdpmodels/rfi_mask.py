@@ -48,9 +48,9 @@ class RFIMask(models.SimpleHDF5Model):
     def max_baseline_length(self, frequency: u.Quantity):
         """Determine maximum baseline length for which data at `frequency` should be masked.
 
-        If the frequency is not masked at all, returns 0.0, and if it is masked
-        at all baseline lengths, returns +inf. One may also supply an array of
-        frequencies and receive an array of responses.
+        If the frequency is not masked at all, returns a negative length, and
+        if it is masked at all baseline lengths, returns +inf. One may also
+        supply an array of frequencies and receive an array of responses.
         """
         raise NotImplementedError()      # pragma: nocover
 
@@ -90,7 +90,7 @@ class RFIMaskRanges(RFIMask):
         b = np.broadcast_to(self.ranges['max_baseline'], in_range.shape, subok=True)
         return np.max(b,
                       axis=-1, where=in_range,
-                      initial=0.0 * self.ranges['max_baseline'].unit)
+                      initial=-1.0 * self.ranges['max_baseline'].unit)
 
     @classmethod
     def from_hdf5(cls: Type[_R], hdf5: h5py.File) -> _R:
