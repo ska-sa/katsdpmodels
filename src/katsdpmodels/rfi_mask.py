@@ -80,6 +80,7 @@ class RFIMaskRanges(RFIMask):
     model_format: ClassVar[Literal['ranges']] = 'ranges'
 
     def __init__(self, ranges: astropy.table.Table, mask_auto_correlations: bool) -> None:
+        super().__init__()
         cols = ('min_frequency', 'max_frequency', 'max_baseline')
         units = (u.Hz, u.Hz, u.m)
         self.ranges = astropy.table.QTable(
