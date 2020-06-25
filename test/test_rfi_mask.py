@@ -16,6 +16,7 @@
 
 """Tests for :mod:`katsdpmodels.rfi_mask`"""
 
+import io
 from typing import Generator
 
 import astropy.units as u
@@ -166,3 +167,13 @@ def test_construct_missing_column() -> None:
     )
     with pytest.raises(KeyError):
         rfi_mask.RFIMaskRanges(ranges, True)
+
+
+def test_to_file(ranges_model):
+    fh = io.BytesIO()
+    ranges_model.to_file(fh, content_type='application/x-hdf5')
+    fh.seek(0)
+    new_model = rfi_mask.RFIMask.from_file(fh, 'http://test.invalid/test.h5',
+                                           content_type='application/x-hdf5')
+    np.testing.assert_array_equal(new_model.ranges, ranges_model.ranges)
+    assert new_model.mask_auto_correlations == ranges_model.mask_auto_correlations
