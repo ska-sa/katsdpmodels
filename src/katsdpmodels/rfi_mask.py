@@ -16,7 +16,7 @@
 
 """Masks for radio-frequency interference."""
 
-from typing import Type, TypeVar, ClassVar
+from typing import Type, TypeVar, ClassVar, Any
 from typing_extensions import Literal
 
 import numpy as np
@@ -36,7 +36,7 @@ class RFIMask(models.SimpleHDF5Model):
     # Methods are not marked @abstractmethod as it causes issues with mypy:
     # https://github.com/python/mypy/issues/4717
 
-    def is_masked(self, frequency: u.Quantity, baseline_length: u.Quantity):
+    def is_masked(self, frequency: u.Quantity, baseline_length: u.Quantity) -> Any:
         """Determine whether given frequency is masked for the given baseline length.
 
         The return value is either a boolean (if frequency and baseline_length
@@ -102,7 +102,7 @@ class RFIMaskRanges(RFIMask):
     def mask_auto_correlations(self) -> bool:
         return self._mask_auto_correlations
 
-    def is_masked(self, frequency: u.Quantity, baseline_length: u.Quantity):
+    def is_masked(self, frequency: u.Quantity, baseline_length: u.Quantity) -> Any:
         # Add extra axis which will broadcast with the masks
         f = frequency[..., np.newaxis]
         b = baseline_length[..., np.newaxis]
