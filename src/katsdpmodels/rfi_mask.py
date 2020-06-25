@@ -125,12 +125,7 @@ class RFIMaskRanges(RFIMask):
 
     @classmethod
     def from_hdf5(cls: Type[_R], hdf5: h5py.File) -> _R:
-        try:
-            data = hdf5['/ranges']
-            if isinstance(data, h5py.Group):
-                raise KeyError        # It should be a dataset, not a group
-        except KeyError:
-            raise models.DataError('Model is missing ranges dataset') from None
+        data = models.get_hdf5_dataset(hdf5, 'ranges')
         if data.ndim != 1:
             raise models.DataError(f'ranges dataset should have 1 dimension, found {data.ndim}')
         expected_dtype = np.dtype([

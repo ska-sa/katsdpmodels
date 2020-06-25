@@ -325,6 +325,22 @@ def get_hdf5_attr(attrs, name, required_type, *, required=False):
         raise TypeError(f'Expected {required_type} for {name!r}, received {actual_type}')
 
 
+def get_hdf5_dataset(group: h5py.Group, name: str) -> h5py.Dataset:
+    """Get a dataset from an HDF5 file, raising an exception if missing.
+
+    The advantage of this method over directly indexing the group is that
+    it will also raise the exception if a group is found instead of a
+    dataset.
+    """
+    try:
+        data = group[name]
+        if isinstance(data, h5py.Group):
+            raise KeyError        # It should be a dataset, not a group
+    except KeyError:
+        raise DataError(f'Model is missing {name} dataset') from None
+    return data
+
+
 def rfc3339_to_datetime(timestamp: str) -> datetime:
     """Convert a string in RFC 3339 format to a timezone-aware datetime object.
 
