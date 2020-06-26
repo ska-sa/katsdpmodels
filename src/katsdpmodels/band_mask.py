@@ -60,6 +60,9 @@ class BandMask(models.SimpleHDF5Model):
             raise models.ModelFormatError(
                 f'Unknown model_format {model_format!r} for {cls.model_type}')
 
+    def to_hdf5(self, hdf5: h5py.File) -> None:
+        raise NotImplementedError()      # pragma: nocover
+
 
 class BandMaskRanges(BandMask):
     model_format: ClassVar[Literal['ranges']] = 'ranges'
