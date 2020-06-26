@@ -16,6 +16,8 @@
 
 """Tests for :mod:`katsdpmodels.rfi_mask`"""
 
+from typing import Generator
+
 import astropy.units as u
 import astropy.table
 import numpy as np
@@ -27,7 +29,7 @@ from test_utils import get_data_url
 
 
 @pytest.fixture
-def ranges_model(web_server):
+def ranges_model(web_server) -> Generator[rfi_mask.RFIMask, None, None]:
     with fetch_requests.fetch_model(web_server('rfi_mask_ranges.h5'), rfi_mask.RFIMask) as model:
         yield model
 
@@ -44,7 +46,8 @@ def ranges_model(web_server):
         (600 * u.MHz, 2 * u.km, True),
         (600 * u.MHz, 0 * u.m, False)
     ])
-def test_is_masked_scalar(frequency, baseline_length, result, ranges_model):
+def test_is_masked_scalar(frequency: u.Quantity, baseline_length: u.Quantity, result: bool,
+                          ranges_model: rfi_mask.RFIMask) -> None:
     assert ranges_model.is_masked(frequency, baseline_length) == result
 
 
@@ -60,7 +63,7 @@ def test_is_masked_vector(ranges_model):
     np.testing.assert_array_equal(result, expected)
 
 
-def test_is_masked_auto_correlations(ranges_model):
+def test_is_masked_auto_correlations(ranges_model: rfi_mask.RFIMaskRanges) -> None:
     ranges_model = rfi_mask.RFIMaskRanges(ranges_model.ranges, True)
     assert ranges_model.is_masked(600 * u.MHz, 0 * u.m)
 
@@ -75,11 +78,12 @@ def test_is_masked_auto_correlations(ranges_model):
         (300 * u.MHz, -1 * u.m),
         (600 * u.MHz, np.inf * u.m)
     ])
-def test_max_baseline_length_scalar(frequency, result, ranges_model):
+def test_max_baseline_length_scalar(frequency: u.Quantity, result: u.Quantity,
+                                    ranges_model: rfi_mask.RFIMask) -> None:
     assert ranges_model.max_baseline_length(frequency) == result
 
 
-def test_max_baseline_length_vector(ranges_model):
+def test_max_baseline_length_vector(ranges_model: rfi_mask.RFIMask) -> None:
     frequency = u.Quantity([90, 110, 300, 600, 900], u.MHz)
     result = ranges_model.max_baseline_length(frequency)
     np.testing.assert_array_equal(
@@ -88,7 +92,7 @@ def test_max_baseline_length_vector(ranges_model):
     )
 
 
-def test_max_baseline_length_empty(ranges_model):
+def test_max_baseline_length_empty(ranges_model: rfi_mask.RFIMaskRanges) -> None:
     ranges_model.ranges.remove_rows(np.s_[:])
     assert ranges_model.max_baseline_length(1 * u.Hz) == -1 * u.m
     result = ranges_model.max_baseline_length([1, 2] * u.Hz)
@@ -98,35 +102,36 @@ def test_max_baseline_length_empty(ranges_model):
 @pytest.mark.parametrize(
     'filename',
     ['rfi_mask_missing_dataset.h5', 'rfi_mask_ranges_is_group.h5'])
-def test_missing_dataset(filename, mock_responses):
+def test_missing_dataset(filename: str, mock_responses) -> None:
     url = get_data_url(filename)
     with pytest.raises(models.DataError, match='Model is missing ranges dataset'):
         fetch_requests.fetch_model(url, rfi_mask.RFIMask)
 
 
-def test_bad_shape(mock_responses):
+def test_bad_shape(mock_responses) -> None:
     url = get_data_url('rfi_mask_ranges_2d.h5')
     with pytest.raises(models.DataError, match='ranges dataset should have 1 dimension, found 2'):
         fetch_requests.fetch_model(url, rfi_mask.RFIMask)
 
 
-def test_bad_model_format(mock_responses):
+def test_bad_model_format(mock_responses) -> None:
     url = get_data_url('rfi_mask_bad_format.h5')
     with pytest.raises(models.ModelFormatError) as exc_info:
         fetch_requests.fetch_model(url, rfi_mask.RFIMask)
     assert str(exc_info.value) == "Unknown model_format 'not_ranges' for rfi_mask"
 
 
-def test_metadata(web_server):
+def test_metadata(web_server) -> None:
     with fetch_requests.fetch_model(
             web_server('rfi_mask_ranges_metadata.h5'), rfi_mask.RFIMask) as model:
         assert model.comment == 'Test model'
         assert model.author == 'Test author'
         assert model.target == 'Test target'
+        assert model.created is not None
         assert model.created.isoformat() == '2020-06-11T11:11:00+00:00'
 
 
-def test_construct_bad_units():
+def test_construct_bad_units() -> None:
     ranges = astropy.table.Table(
         [(1, 2, 3), (4, 5, 6), (7, 8, 9)],
         names=('min_frequency', 'max_frequency', 'max_baseline'),
@@ -143,7 +148,7 @@ def test_construct_bad_units():
         rfi_mask.RFIMaskRanges(ranges, True)
 
 
-def test_construct_incompatible_types():
+def test_construct_incompatible_types() -> None:
     ranges = astropy.table.Table(
         [(1, 2, 3), (4, 5, 6), ('a', 'b', 'c')],
         names=('min_frequency', 'max_frequency', 'max_baseline'),
@@ -153,7 +158,7 @@ def test_construct_incompatible_types():
         rfi_mask.RFIMaskRanges(ranges, True)
 
 
-def test_construct_missing_column():
+def test_construct_missing_column() -> None:
     ranges = astropy.table.Table(
         [(1, 2, 3), (4, 5, 6)],
         names=('min_frequency', 'max_frequency'),
