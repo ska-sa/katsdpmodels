@@ -237,7 +237,7 @@ class SimpleHDF5Model(Model):
                     f'Expected extension of .h5 or .hdf5, not {path.suffix} '
                     '(use content_type to override if necessary)'
                 )
-        if isinstance(file, (str, pathlib.Path)):
+        if isinstance(file, pathlib.Path):
             hdf5 = h5py.File(str(file), 'w')
         else:
             hdf5 = h5py.File(file, 'w')
