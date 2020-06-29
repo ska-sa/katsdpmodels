@@ -18,7 +18,7 @@
 
 import io
 import urllib.parse
-from typing import List, Dict, Generator, Optional, MutableMapping, Type, TypeVar, Any, cast
+from typing import List, Dict, Generator, Optional, MutableMapping, Type, TypeVar, Any
 
 import aiohttp
 
@@ -105,7 +105,7 @@ class Fetcher(fetch.FetcherBase):
                 content = await resp.read()
                 file = io.BytesIO(content)
                 return fetch.FileResponse(
-                    str(resp.url), resp.headers, file=cast(io.IOBase, file), content=content)
+                    str(resp.url), resp.headers, file=file, content=content)
 
     async def _run(self, gen: Generator[fetch.Request, fetch.Response, _T]) -> _T:
         try:

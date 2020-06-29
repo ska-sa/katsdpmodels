@@ -72,14 +72,29 @@ class RFIMask(models.SimpleHDF5Model):
             raise models.ModelFormatError(
                 f'Unknown model_format {model_format!r} for {cls.model_type}')
 
+    def to_hdf5(self, hdf5: h5py.File) -> None:
+        raise NotImplementedError()      # pragma: nocover
+
 
 class RFIMaskRanges(RFIMask):
-    model_format: ClassVar[Literal['rfi_format']] = 'rfi_format'
+    model_format: ClassVar[Literal['ranges']] = 'ranges'
 
-    def __init__(self, ranges: astropy.table.QTable, mask_auto_correlations: bool) -> None:
-        # TODO: validate the columns and units
-        # TODO: document what the requirements are
-        self.ranges = ranges
+    def __init__(self, ranges: astropy.table.Table, mask_auto_correlations: bool) -> None:
+        cols = ('min_frequency', 'max_frequency', 'max_baseline')
+        units = (u.Hz, u.Hz, u.m)
+        self.ranges = astropy.table.QTable(
+            [ranges[col] for col in cols],
+            names=cols,
+            dtype=(np.float64, np.float64, np.float64)
+        )
+        # Canonicalise the units to simplify to_hdf5 (and also remove the
+        # cost of conversions when methods are called with canonical units).
+        for col, unit in zip(cols, units):
+            # Ensure we haven't been given unit-less data, as <<= will inject
+            # the unit (see https://github.com/astropy/astropy/issues/10514).
+            if self.ranges[col].unit is None:
+                raise u.UnitConversionError(f'Column {col} has no units')
+            self.ranges[col] <<= unit
         self._mask_auto_correlations = mask_auto_correlations
 
     @property
@@ -124,10 +139,15 @@ class RFIMaskRanges(RFIMask):
             ('max_baseline', 'f8')
         ])
         data = models.require_columns(data, expected_dtype)
-        ranges = astropy.table.QTable(data[...], copy=False)
-        ranges['min_frequency'] <<= u.Hz
-        ranges['max_frequency'] <<= u.Hz
-        ranges['max_baseline'] <<= u.m
+        ranges = astropy.table.Table(data[...], copy=False)
+        ranges['min_frequency'].unit = u.Hz
+        ranges['max_frequency'].unit = u.Hz
+        ranges['max_baseline'].unit = u.m
         mask_auto_correlations = models.get_hdf5_attr(
             hdf5.attrs, 'mask_auto_correlations', bool, required=True)
         return cls(ranges, mask_auto_correlations)
+
+    def to_hdf5(self, hdf5: h5py.File) -> None:
+        hdf5.attrs['mask_auto_correlations'] = self.mask_auto_correlations
+        # The constructor ensures we're using unscaled units
+        hdf5.create_dataset('ranges', data=self.ranges.as_array(), track_times=False)

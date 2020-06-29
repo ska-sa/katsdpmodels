@@ -109,6 +109,9 @@ async def test_fetch_model_cached_model_type_error(web_server) -> None:
         def from_hdf5(cls, hdf5: h5py.File) -> 'OtherModel':
             return cls()
 
+        def to_hdf5(self, hdf5: h5py.File) -> None:
+            pass
+
     url = web_server('rfi_mask_ranges.h5')
     async with fetch_aiohttp.Fetcher() as fetcher:
         await fetcher.get(url, DummyModel)

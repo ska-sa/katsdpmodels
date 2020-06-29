@@ -16,14 +16,32 @@
 
 """Tests for :mod:`katsdpmodels.models`."""
 
+from datetime import datetime, timezone
 import hashlib
-from typing import Dict
+import io
+import pathlib
+from typing import Dict, Type, Union
 
 import numpy as np
 import pytest
 
 from katsdpmodels import models
 from test_utils import DummyModel
+
+
+@pytest.fixture
+def dummy_model() -> DummyModel:
+    ranges = np.array(
+       [(1, 4.5), (2, -5.5)],
+       dtype=[('a', 'i4'), ('b', 'f8')]
+    )
+    model = DummyModel(ranges)
+    model.author = 'Test author'
+    model.comment = 'Test comment'
+    model.target = 'Test target'
+    model.version = 1
+    model.created = datetime(2020, 6, 15, 14, 11, tzinfo=timezone.utc)
+    return model
 
 
 def test_eq_hash() -> None:
@@ -138,3 +156,66 @@ def test_require_columns_extra_column() -> None:
     expected = np.array([10.0, 15.0, 20.0], dtype=dtype2)
     out = models.require_columns(array, dtype2)
     np.testing.assert_equal(out, expected)
+
+
+def assert_models_equal(model1: DummyModel, model2: DummyModel):
+    assert type(model1) == type(model2)
+    assert model1.model_type == model2.model_type
+    assert model1.model_format == model2.model_format
+    assert model1.comment == model2.comment
+    assert model1.author == model2.author
+    assert model1.target == model2.target
+    assert model1.created == model2.created
+    assert model1.version == model2.version
+    np.testing.assert_array_equal(model1.ranges, model2.ranges)
+
+
+@pytest.mark.parametrize('clear_metadata', [False, True])
+def test_hdf5_to_file(clear_metadata: bool, dummy_model: DummyModel) -> None:
+    if clear_metadata:
+        dummy_model.comment = None
+        dummy_model.author = None
+        dummy_model.target = None
+        dummy_model.created = None
+    fh = io.BytesIO()
+    dummy_model.to_file(fh, content_type='application/x-hdf5')
+    fh.seek(0)
+    new_model = DummyModel.from_file(fh, 'http://test.invalid/dummy.h5',
+                                     content_type='application/x-hdf5')
+    assert_models_equal(dummy_model, new_model)
+
+
+def test_hdf5_to_file_no_version(dummy_model: DummyModel) -> None:
+    dummy_model.version = None
+    with pytest.raises(ValueError):
+        dummy_model.to_file(io.BytesIO(), content_type='application/x-hdf5')
+
+
+def test_hdf5_to_file_no_content_type_or_filename(dummy_model: DummyModel) -> None:
+    with pytest.raises(AttributeError):
+        dummy_model.to_file(io.BytesIO())
+
+
+def test_hdf5_to_file_bad_content_type(dummy_model: DummyModel) -> None:
+    with pytest.raises(models.FileTypeError, match='Expected application/x-hdf5, not image/png'):
+        dummy_model.to_file(io.BytesIO(), content_type='image/png')
+
+
+@pytest.mark.parametrize('path_type', [pathlib.Path, str])
+def test_hdf5_to_file_bad_extension(path_type: Union[Type[pathlib.Path], Type[str]],
+                                    dummy_model: DummyModel,
+                                    tmp_path: pathlib.Path) -> None:
+    with pytest.raises(models.FileTypeError,
+                       match=r'Expected extension of \.h5 or \.hdf5, not \.foo'):
+        dummy_model.to_file(path_type(tmp_path / 'test.foo'))
+
+
+@pytest.mark.parametrize('path_type', [pathlib.Path, str])
+def test_hdf5_to_file_good_extension(path_type: Union[Type[pathlib.Path], Type[str]],
+                                     dummy_model: DummyModel,
+                                     tmp_path: pathlib.Path) -> None:
+    path = path_type(tmp_path / 'test.h5')
+    dummy_model.to_file(path)
+    new_model = dummy_model.from_file(open(path, 'rb'), 'test.h5',
+                                      content_type='application/x-hdf5')
+    assert_models_equal(dummy_model, new_model)
