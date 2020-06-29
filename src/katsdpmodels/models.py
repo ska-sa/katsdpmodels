@@ -136,7 +136,7 @@ class Model(ABC):
     @abstractmethod
     def to_file(self, file: Union[str, pathlib.Path, _FileLike], *,
                 content_type: Optional[str] = None) -> None:
-        """Write a model to file.
+        """Write a model to file, overwriting any existing file.
 
         If `content_type` is given, it should be used to determine the file
         type; otherwise the filename may be used.
