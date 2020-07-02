@@ -10,6 +10,8 @@ rfi_mask_ranges.h5
     max_baseline_length.
 rfi_mask_ranges_metadata.h5
     Same as above with the addition of model_comment, model_author etc.
+band_mask_ranges.h5
+    Band mask with two ranges.
 
 Aliases
 -------
@@ -42,6 +44,10 @@ rfi_mask_ranges_2d.h5
     The ``ranges`` dataset has 2 dimensions instead of 1.
 rfi_mask_ranges_is_group.h5
     There is a group called ``ranges`` rather than a dataset.
+band_mask_bad_format.h5
+    The ``model_format`` field is not a valid value.
+band_mask_ranges_2d.h5
+    The ``ranges`` dataset has 2 dimensions instead of 1.
 wrong_extension.blah
     Copy of rfi_mask_ranges.h5 with a different extension.
 

@@ -325,6 +325,22 @@ def get_hdf5_attr(attrs, name, required_type, *, required=False):
         raise TypeError(f'Expected {required_type} for {name!r}, received {actual_type}')
 
 
+def get_hdf5_dataset(group: h5py.Group, name: str) -> h5py.Dataset:
+    """Get a dataset from an HDF5 file, raising an exception if missing.
+
+    The advantage of this method over directly indexing the group is that
+    it will also raise the exception if a group is found instead of a
+    dataset.
+    """
+    try:
+        data = group[name]
+        if isinstance(data, h5py.Group):
+            raise KeyError        # It should be a dataset, not a group
+    except KeyError:
+        raise DataError(f'Model is missing {name} dataset') from None
+    return data
+
+
 def rfc3339_to_datetime(timestamp: str) -> datetime:
     """Convert a string in RFC 3339 format to a timezone-aware datetime object.
 
@@ -335,8 +351,8 @@ def rfc3339_to_datetime(timestamp: str) -> datetime:
     return datetime.fromtimestamp(unix_time, timezone.utc)
 
 
-def require_columns(array: Any, dtype: np.dtype) -> Any:
-    """Validate the columns in a table.
+def require_columns(name: str, array: Any, dtype: np.dtype, ndim: int) -> Any:
+    """Validate the columns in a table and the dimensionality.
 
     The `dtype` is the expected dtype, which must be a structured dtype. The
     array is checked for compatibility: it must have all the required fields
@@ -352,17 +368,22 @@ def require_columns(array: Any, dtype: np.dtype) -> Any:
     Raises
     ------
     DataError
-        if the types are not compatible
+        if the types are not compatible or the wrong number of dimensions are present.
     """
+    if array.ndim != ndim:
+        raise DataError(f'{name} should be {ndim}-dimensional, but is {array.ndim}-dimensional')
     if array.dtype == dtype:
         return np.asanyarray(array)
     if array.dtype.names is None:
-        raise DataError('Array does not have named columns')
-    for name in dtype.names:
-        if name not in array.dtype.names:
-            raise DataError(f'Column {name} is missing')
-        if not np.can_cast(array.dtype[name], dtype[name], 'same_kind'):
-            raise DataError(f'Column {name} has type {array.dtype[name]}, expected {dtype[name]}')
+        raise DataError(f'{name} does not have named columns')
+    for col_name in dtype.names:
+        if col_name not in array.dtype.names:
+            raise DataError(f'{name} column {col_name} is missing')
+        if not np.can_cast(array.dtype[col_name], dtype[col_name], 'same_kind'):
+            raise DataError(
+                f'{name} column {col_name} has type {array.dtype[col_name]}, '
+                f'expected {dtype[col_name]}'
+            )
     out = np.empty(array.shape, dtype)
     np.lib.recfunctions.assign_fields_by_name(out, array)
     return out

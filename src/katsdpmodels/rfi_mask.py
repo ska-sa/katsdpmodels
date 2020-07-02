@@ -16,7 +16,7 @@
 
 """Masks for radio-frequency interference."""
 
-from typing import Type, TypeVar, ClassVar
+from typing import Type, TypeVar, ClassVar, Any
 from typing_extensions import Literal
 
 import numpy as np
@@ -36,7 +36,7 @@ class RFIMask(models.SimpleHDF5Model):
     # Methods are not marked @abstractmethod as it causes issues with mypy:
     # https://github.com/python/mypy/issues/4717
 
-    def is_masked(self, frequency: u.Quantity, baseline_length: u.Quantity):
+    def is_masked(self, frequency: u.Quantity, baseline_length: u.Quantity) -> Any:
         """Determine whether given frequency is masked for the given baseline length.
 
         The return value is either a boolean (if frequency and baseline_length
@@ -80,6 +80,7 @@ class RFIMaskRanges(RFIMask):
     model_format: ClassVar[Literal['ranges']] = 'ranges'
 
     def __init__(self, ranges: astropy.table.Table, mask_auto_correlations: bool) -> None:
+        super().__init__()
         cols = ('min_frequency', 'max_frequency', 'max_baseline')
         units = (u.Hz, u.Hz, u.m)
         self.ranges = astropy.table.QTable(
@@ -101,7 +102,7 @@ class RFIMaskRanges(RFIMask):
     def mask_auto_correlations(self) -> bool:
         return self._mask_auto_correlations
 
-    def is_masked(self, frequency: u.Quantity, baseline_length: u.Quantity):
+    def is_masked(self, frequency: u.Quantity, baseline_length: u.Quantity) -> Any:
         # Add extra axis which will broadcast with the masks
         f = frequency[..., np.newaxis]
         b = baseline_length[..., np.newaxis]
@@ -125,20 +126,14 @@ class RFIMaskRanges(RFIMask):
 
     @classmethod
     def from_hdf5(cls: Type[_R], hdf5: h5py.File) -> _R:
-        try:
-            data = hdf5['/ranges']
-            if isinstance(data, h5py.Group):
-                raise KeyError        # It should be a dataset, not a group
-        except KeyError:
-            raise models.DataError('Model is missing ranges dataset') from None
-        if data.ndim != 1:
-            raise models.DataError(f'ranges dataset should have 1 dimension, found {data.ndim}')
+        dataset_name = 'ranges'
+        data = models.get_hdf5_dataset(hdf5, dataset_name)
         expected_dtype = np.dtype([
             ('min_frequency', 'f8'),
             ('max_frequency', 'f8'),
             ('max_baseline', 'f8')
         ])
-        data = models.require_columns(data, expected_dtype)
+        data = models.require_columns(f'{dataset_name} dataset', data, expected_dtype, 1)
         ranges = astropy.table.Table(data[...], copy=False)
         ranges['min_frequency'].unit = u.Hz
         ranges['max_frequency'].unit = u.Hz
