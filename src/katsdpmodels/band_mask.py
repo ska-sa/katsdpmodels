@@ -29,8 +29,8 @@ from . import models
 _B = TypeVar('_B', bound='BandMaskRanges')
 
 
-class Band:
-    """Defines a band for use with :class:`BandMask`."""
+class SpectralWindow:
+    """Defines a frequency range for use with :class:`BandMask`."""
 
     def __init__(self, bandwidth: u.Quantity, centre_frequency: u.Quantity):
         self.bandwidth = bandwidth.to(u.Hz)
@@ -48,7 +48,7 @@ class Band:
 class BandMask(models.SimpleHDF5Model):
     model_type: ClassVar[Literal['band_mask']] = 'band_mask'
 
-    def is_masked(self, band: Band, frequency: u.Quantity) -> Any:
+    def is_masked(self, spectral_window: SpectralWindow, frequency: u.Quantity) -> Any:
         raise NotImplementedError()      # pragma: nocover
 
     @classmethod
@@ -76,8 +76,8 @@ class BandMaskRanges(BandMask):
             dtype=(np.float64, np.float64)
         )
 
-    def is_masked(self, band: Band, frequency: u.Quantity) -> Any:
-        fraction = (frequency - band.min_frequency) / band.bandwidth
+    def is_masked(self, spectral_window: SpectralWindow, frequency: u.Quantity) -> Any:
+        fraction = (frequency - spectral_window.min_frequency) / spectral_window.bandwidth
         # Add an axis that will broadcast with the ranges
         fraction = fraction[..., np.newaxis]
         mask = (fraction >= self.ranges['min_fraction']) & (fraction <= self.ranges['max_fraction'])

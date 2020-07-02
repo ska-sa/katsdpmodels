@@ -29,8 +29,8 @@ from test_utils import get_data_url
 
 
 @pytest.fixture
-def band() -> band_mask.Band:
-    return band_mask.Band(400 * u.MHz, 1000 * u.MHz)
+def spectral_window() -> band_mask.SpectralWindow:
+    return band_mask.SpectralWindow(400 * u.MHz, 1000 * u.MHz)
 
 
 @pytest.fixture
@@ -39,11 +39,11 @@ def ranges_model(web_server) -> Generator[band_mask.BandMask, None, None]:
         yield model
 
 
-def test_band_attributes(band) -> None:
-    assert band.bandwidth == 400 * u.MHz
-    assert band.centre_frequency == 1000 * u.MHz
-    assert band.min_frequency == 800 * u.MHz
-    assert band.max_frequency == 1200 * u.MHz
+def test_spectral_window_attributes(spectral_window) -> None:
+    assert spectral_window.bandwidth == 400 * u.MHz
+    assert spectral_window.centre_frequency == 1000 * u.MHz
+    assert spectral_window.min_frequency == 800 * u.MHz
+    assert spectral_window.max_frequency == 1200 * u.MHz
 
 
 @pytest.mark.parametrize(
@@ -63,15 +63,17 @@ def test_band_attributes(band) -> None:
         (1200e6 * u.Hz, True)
     ])
 def test_is_masked_scalar(frequency: u.Quantity, result: bool,
-                          ranges_model: band_mask.BandMask, band: band_mask.Band) -> None:
-    # Band is 800-1200 MHz, mask is 800-820 and 1180-1200
-    assert ranges_model.is_masked(band, frequency) == result
+                          ranges_model: band_mask.BandMask,
+                          spectral_window: band_mask.SpectralWindow) -> None:
+    # Window is 800-1200 MHz, mask is 800-820 and 1180-1200
+    assert ranges_model.is_masked(spectral_window, frequency) == result
 
 
-def test_is_masked_vector(ranges_model: band_mask.BandMask, band: band_mask.Band) -> None:
+def test_is_masked_vector(ranges_model: band_mask.BandMask,
+                          spectral_window: band_mask.SpectralWindow) -> None:
     frequency = [801, 810, 819, 821, 1000, 1179, 1181, 1199, 1201] * u.MHz
     np.testing.assert_array_equal(
-        ranges_model.is_masked(band, frequency),
+        ranges_model.is_masked(spectral_window, frequency),
         [True, True, True, False, False, False, True, True, False]
     )
 
