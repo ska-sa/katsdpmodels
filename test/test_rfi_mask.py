@@ -111,7 +111,8 @@ def test_missing_dataset(filename: str, mock_responses) -> None:
 
 def test_bad_shape(mock_responses) -> None:
     url = get_data_url('rfi_mask_ranges_2d.h5')
-    with pytest.raises(models.DataError, match='ranges dataset should have 1 dimension, found 2'):
+    with pytest.raises(models.DataError,
+                       match='ranges dataset should be 1-dimensional, but is 2-dimensional'):
         fetch_requests.fetch_model(url, rfi_mask.RFIMask)
 
 

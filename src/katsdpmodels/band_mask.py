@@ -86,13 +86,11 @@ class BandMaskRanges(BandMask):
     @classmethod
     def from_hdf5(cls: Type[_B], hdf5: h5py.File) -> _B:
         data = models.get_hdf5_dataset(hdf5, 'ranges')
-        if data.ndim != 1:
-            raise models.DataError(f'ranges dataset should have 1 dimension, found {data.ndim}')
         expected_dtype = np.dtype([
             ('min_fraction', 'f8'),
             ('max_fraction', 'f8'),
         ])
-        data = models.require_columns(data, expected_dtype)
+        data = models.require_columns('ranges dataset', data, expected_dtype, 1)
         ranges = astropy.table.Table(data[...], copy=False)
         ranges['min_fraction'].unit = u.dimensionless_unscaled
         ranges['max_fraction'].unit = u.dimensionless_unscaled

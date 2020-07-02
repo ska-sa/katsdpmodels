@@ -127,14 +127,12 @@ class RFIMaskRanges(RFIMask):
     @classmethod
     def from_hdf5(cls: Type[_R], hdf5: h5py.File) -> _R:
         data = models.get_hdf5_dataset(hdf5, 'ranges')
-        if data.ndim != 1:
-            raise models.DataError(f'ranges dataset should have 1 dimension, found {data.ndim}')
         expected_dtype = np.dtype([
             ('min_frequency', 'f8'),
             ('max_frequency', 'f8'),
             ('max_baseline', 'f8')
         ])
-        data = models.require_columns(data, expected_dtype)
+        data = models.require_columns('ranges dataset', data, expected_dtype, 1)
         ranges = astropy.table.Table(data[...], copy=False)
         ranges['min_frequency'].unit = u.Hz
         ranges['max_frequency'].unit = u.Hz

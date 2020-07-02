@@ -111,29 +111,29 @@ def test_require_columns_missing_column() -> None:
     dtype1 = np.dtype([('a', 'f8'), ('b', 'i4')])
     dtype2 = np.dtype([('a', 'f8'), ('c', 'i4')])
     array = np.zeros((5,), dtype1)
-    with pytest.raises(models.DataError, match='Column c is missing'):
-        models.require_columns(array, dtype2)
+    with pytest.raises(models.DataError, match='foo column c is missing'):
+        models.require_columns('foo', array, dtype2, 1)
 
 
 def test_require_columns_unstructured() -> None:
     dtype = np.dtype([('a', 'f8'), ('b', 'i4')])
     array = np.zeros((5,), np.float32)
-    with pytest.raises(models.DataError, match='Array does not have named columns'):
-        models.require_columns(array, dtype)
+    with pytest.raises(models.DataError, match='foo does not have named columns'):
+        models.require_columns('foo', array, dtype, 1)
 
 
 def test_require_columns_dtype_mismatch() -> None:
     dtype1 = np.dtype([('a', 'f8')])
     dtype2 = np.dtype([('a', 'i4')])
     array = np.zeros((5,), dtype1)
-    with pytest.raises(models.DataError, match='Column a has type float64, expected int32'):
-        models.require_columns(array, dtype2)
+    with pytest.raises(models.DataError, match='foo column a has type float64, expected int32'):
+        models.require_columns('foo', array, dtype2, 1)
 
 
 def test_require_columns_same_dtype() -> None:
     dtype = np.dtype([('a', 'f8'), ('b', 'i4')])
     array = np.array([(1.5, 1), (3.5, 3)], dtype=dtype)
-    out = models.require_columns(array, dtype)
+    out = models.require_columns('foo', array, dtype, 1)
     np.testing.assert_array_equal(array, out)
     assert np.shares_memory(array, out)
 
@@ -142,7 +142,7 @@ def test_require_columns_change_byteorder() -> None:
     dtype1 = np.dtype([('a', '>f8')])
     dtype2 = np.dtype([('a', '<f8')])
     array = np.array([1.0, 1.5, 2.0], dtype=dtype1)
-    out = models.require_columns(array, dtype2)
+    out = models.require_columns('foo', array, dtype2, 1)
     np.testing.assert_array_equal(array, out)
     # Some versions of numpy considered dtypes to be equal even if the byte
     # order was different, so explicitly compare byte order.
@@ -154,8 +154,16 @@ def test_require_columns_extra_column() -> None:
     dtype2 = np.dtype([('b', 'f8')])
     array = np.array([(1.0, 10.0), (1.5, 15.0), (2.0, 20.0)], dtype=dtype1)
     expected = np.array([10.0, 15.0, 20.0], dtype=dtype2)
-    out = models.require_columns(array, dtype2)
+    out = models.require_columns('foo', array, dtype2, 1)
     np.testing.assert_equal(out, expected)
+
+
+def test_require_columns_dimension_mismatch() -> None:
+    dtype = np.dtype([('a', 'f8'), ('b', 'i4')])
+    array = np.zeros((1, 2), dtype)
+    with pytest.raises(models.DataError,
+                       match='foo should be 1-dimensional, but is 2-dimensional'):
+        models.require_columns('foo', array, dtype, 1)
 
 
 def assert_models_equal(model1: DummyModel, model2: DummyModel):
