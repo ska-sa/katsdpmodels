@@ -52,6 +52,7 @@ intersphinx_mapping = {
     'h5py': ('https://docs.h5py.org/en/stable', None),
     'requests': ('https://requests.readthedocs.io/en/master/', None),
     'aiohttp': ('https://docs.aiohttp.org/en/stable', None),
+    'katsdptelstate': ('https://katsdptelstate.readthedocs.io/en/latest', None)
 }
 
 # -- Options for HTML output -------------------------------------------------
