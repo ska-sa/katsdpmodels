@@ -263,3 +263,42 @@ class FetcherBase:
             self._model_cache.clear()
         else:
             self._model_cache = {}     # Allow garbage collection of the old cache
+
+
+class TelescopeStateFetcherBase:
+    """Base class for fetching models from telescope state.
+
+    This is a low-level class not intended for direct usage. It handles
+    the mechanics of deciding which telescope state keys are needed and
+    assembling them into an URL. The details of how to get data out of
+    telescope state (either synchronously or asynchronously) and passing
+    that to a model class is left to the subclass.
+
+    This class is *not* thread-safe.
+    """
+
+    def __init__(self) -> None:
+        # Cache of sdp_model_base_url
+        self._base_url: Optional[str] = None
+
+    def _get_str(self, key: str) -> Generator[str, object, str]:
+        """Get a string-valued key from the telescope state.
+
+        It yields the key to the caller, which should either respond
+        with the value or throw in an exception.
+        """
+        try:
+            value = yield key
+        except Exception as exc:
+            raise models.TelescopeStateError(f'could not get {key}: {exc}') from exc
+        if not isinstance(value, str):
+            type_ = type(value)
+            raise models.TelescopeStateError(f'{key} should be a str, not {type_}')
+        else:
+            return value
+
+    def _get_url(self, key: str) -> Generator[str, object, str]:
+        if self._base_url is None:
+            self._base_url = yield from self._get_str('sdp_model_base_url')
+        rel_url = yield from self._get_str(key)
+        return urllib.parse.urljoin(self._base_url, rel_url)

@@ -21,6 +21,7 @@ import io
 import re
 import logging
 import os
+import sys
 import urllib.parse
 from typing import (
     List, Generator, Dict, MutableMapping, Optional, Type, TypeVar, Any, TYPE_CHECKING
@@ -303,7 +304,7 @@ def fetch_model(url: str, model_class: Type[_M], *,
         return fetcher.get(url, model_class)
 
 
-class TelescopeStateFetcher:
+class TelescopeStateFetcher(fetch.TelescopeStateFetcherBase):
     """Fetches models that are referenced by telescope state.
 
     The telescope state must have a ``sdp_model_base_url`` key with a base
@@ -318,6 +319,7 @@ class TelescopeStateFetcher:
     def __init__(self,
                  telstate: 'katsdptelstate.TelescopeState',
                  fetcher: Optional[Fetcher] = None) -> None:
+        super().__init__()
         self.telstate = telstate
         if fetcher is not None:
             self.fetcher = fetcher
@@ -325,32 +327,6 @@ class TelescopeStateFetcher:
         else:
             self.fetcher = Fetcher()
             self._close_fetcher = True
-        try:
-            self._base_url = self._get_str('sdp_model_base_url')
-        except models.TelescopeStateError as exc:
-            self._base_url = ''
-            self._base_url_exc: Optional[models.TelescopeStateError] = exc
-        else:
-            self._base_url_exc = None
-
-    def _get_str(self, key: str) -> str:
-        """Get a string key from telescope state.
-
-        Raises
-        ------
-        .TelescopeStateError
-            if there were any exceptions raised, or the key is not a string
-        """
-        try:
-            value = self.telstate[key]
-        except Exception as exc:
-            raise models.TelescopeStateError(
-                f'could not get {key}: {exc}') from exc
-        if not isinstance(value, str):
-            type_ = type(value)
-            raise models.TelescopeStateError(f'{key} should be a str, not {type_}')
-        else:
-            return value
 
     def get(self, key: str, model_class: Type[_M], *,
             lazy: bool = False) -> _M:
@@ -360,10 +336,21 @@ class TelescopeStateFetcher:
         with getting the keys from the telescope state will raise
         :exc:`.TelescopeStateError`.
         """
-        if self._base_url_exc is not None:
-            raise self._base_url_exc
-        rel_url = self._get_str(key)
-        url = urllib.parse.urljoin(self._base_url, rel_url)
+        gen = self._get_url(key)
+        try:
+            request = next(gen)      # Start it going
+            while True:
+                try:
+                    response = self.telstate[request]
+                except Exception:
+                    request = gen.throw(*sys.exc_info())
+                else:
+                    request = gen.send(response)
+        except StopIteration as exc:
+            url = exc.value
+        finally:
+            gen.close()
+
         return self.fetcher.get(url, model_class, lazy=lazy)
 
     def close(self) -> None:

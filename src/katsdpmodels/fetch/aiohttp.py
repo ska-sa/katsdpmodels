@@ -17,17 +17,24 @@
 """Fetch models asynchronously over HTTP."""
 
 import io
+import sys
 import urllib.parse
-from typing import List, Dict, Generator, Optional, MutableMapping, Type, TypeVar, Any
+from typing import (
+    List, Dict, Generator, Optional, MutableMapping, Type, TypeVar, Any, TYPE_CHECKING
+)
 
 import aiohttp
 
 from .. import models, fetch
 
+if TYPE_CHECKING:
+    import katsdptelstate.aio
+
 
 _T = TypeVar('_T')
 _M = TypeVar('_M', bound=models.Model)
 _F = TypeVar('_F', bound='Fetcher')
+_TF = TypeVar('_TF', bound='TelescopeStateFetcher')
 
 
 class Fetcher(fetch.FetcherBase):
@@ -162,3 +169,63 @@ async def fetch_model(url: str, model_class: Type[_M], *,
     model_cache: Dict[str, models.Model] = {}
     async with Fetcher(session=session, model_cache=model_cache) as fetcher:
         return await fetcher.get(url, model_class)
+
+
+class TelescopeStateFetcher(fetch.TelescopeStateFetcherBase):
+    """Fetches models that are referenced by telescope state.
+
+    The telescope state must have a ``sdp_model_base_url`` key with a base
+    URL, and a key per model with an URL relative to this one. If it is
+    missing then a :exc:`KeyError` will be raised from :meth:`get`, rather
+    than the constructor.
+
+    If no fetcher is provided, an internal one will be created, and closed
+    when this object is closed.
+    """
+
+    def __init__(self,
+                 telstate: 'katsdptelstate.aio.TelescopeState',
+                 fetcher: Optional[Fetcher] = None) -> None:
+        super().__init__()
+        self.telstate = telstate
+        if fetcher is not None:
+            self.fetcher = fetcher
+            self._close_fetcher = False
+        else:
+            self.fetcher = Fetcher()
+            self._close_fetcher = True
+
+    async def get(self, key: str, model_class: Type[_M]) -> _M:
+        """Retrieve a single model.
+
+        The semantics are the same as for :meth:`Fetcher.get`. Any problems
+        with getting the keys from the telescope state will raise
+        :exc:`.TelescopeStateError`.
+        """
+        gen = self._get_url(key)
+        try:
+            request = next(gen)      # Start it going
+            while True:
+                try:
+                    response = await self.telstate[request]
+                except Exception:
+                    request = gen.throw(*sys.exc_info())
+                else:
+                    request = gen.send(response)
+        except StopIteration as exc:
+            url = exc.value
+        finally:
+            gen.close()
+
+        return await self.fetcher.get(url, model_class)
+
+    async def close(self) -> None:
+        """Clean up resources."""
+        if self._close_fetcher:
+            await self.fetcher.close()
+
+    async def __aenter__(self: _TF) -> _TF:
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        await self.close()
