@@ -20,7 +20,8 @@ import io
 import sys
 import urllib.parse
 from typing import (
-    List, Dict, Generator, Optional, MutableMapping, Type, TypeVar, Any, TYPE_CHECKING
+    List, Dict, Generator, Optional, MutableMapping, Type, Callable, Awaitable,
+    TypeVar, Any, TYPE_CHECKING
 )
 
 import aiohttp
@@ -35,6 +36,25 @@ _T = TypeVar('_T')
 _M = TypeVar('_M', bound=models.Model)
 _F = TypeVar('_F', bound='Fetcher')
 _TF = TypeVar('_TF', bound='TelescopeStateFetcher')
+_Req = TypeVar('_Req')
+_Resp = TypeVar('_Resp')
+
+
+async def _run_generator(gen: Generator[_Req, _Resp, _T],
+                         handle_request: Callable[[_Req], Awaitable[_Resp]]) -> _T:
+    try:
+        request = next(gen)      # Start it going
+        while True:
+            try:
+                response = await handle_request(request)
+            except Exception:
+                request = gen.throw(*sys.exc_info())
+            else:
+                request = gen.send(response)
+    except StopIteration as exc:
+        return exc.value
+    finally:
+        gen.close()
 
 
 class Fetcher(fetch.FetcherBase):
@@ -114,17 +134,6 @@ class Fetcher(fetch.FetcherBase):
                 return fetch.FileResponse(
                     str(resp.url), resp.headers, file=file, content=content)
 
-    async def _run(self, gen: Generator[fetch.Request, fetch.Response, _T]) -> _T:
-        try:
-            request = next(gen)      # Start it going
-            while True:
-                response = await self._handle_request(request)
-                request = gen.send(response)
-        except StopIteration as exc:
-            return exc.value
-        finally:
-            gen.close()
-
     async def resolve(self, url: str) -> List[str]:
         """Follow a chain of aliases.
 
@@ -136,7 +145,7 @@ class Fetcher(fetch.FetcherBase):
         .TooManyAliasesError
             If there were more than :data:`.MAX_ALIASES` aliases or a cycle was found.
         """
-        return await self._run(self._resolve(url))
+        return await _run_generator(self._resolve(url), self._handle_request)
 
     async def get(self, url: str, model_class: Type[_M]) -> _M:
         """Retrieve a single model.
@@ -153,7 +162,7 @@ class Fetcher(fetch.FetcherBase):
         aiohttp.ClientError
             Any exceptions raised by the underlying session.
         """
-        return await self._run(self._get(url, model_class))
+        return await _run_generator(self._get(url, model_class), self._handle_request)
 
 
 async def fetch_model(url: str, model_class: Type[_M], *,
@@ -202,21 +211,7 @@ class TelescopeStateFetcher(fetch.TelescopeStateFetcherBase):
         with getting the keys from the telescope state will raise
         :exc:`.TelescopeStateError`.
         """
-        gen = self._get_url(key)
-        try:
-            request = next(gen)      # Start it going
-            while True:
-                try:
-                    response = await self.telstate[request]
-                except Exception:
-                    request = gen.throw(*sys.exc_info())
-                else:
-                    request = gen.send(response)
-        except StopIteration as exc:
-            url = exc.value
-        finally:
-            gen.close()
-
+        url = await _run_generator(self._get_url(key), self.telstate.__getitem__)
         return await self.fetcher.get(url, model_class)
 
     async def close(self) -> None:

@@ -17,6 +17,7 @@
 """Fetch models over HTTP."""
 
 import errno
+import functools
 import io
 import re
 import logging
@@ -24,7 +25,8 @@ import os
 import sys
 import urllib.parse
 from typing import (
-    List, Generator, Dict, MutableMapping, Optional, Type, TypeVar, Any, TYPE_CHECKING
+    List, Generator, Dict, MutableMapping, Optional, Type, Callable,
+    TypeVar, Any, TYPE_CHECKING
 )
 
 import requests
@@ -40,6 +42,25 @@ _T = TypeVar('_T')
 _M = TypeVar('_M', bound=models.Model)
 _F = TypeVar('_F', bound='Fetcher')
 _TF = TypeVar('_TF', bound='TelescopeStateFetcher')
+_Req = TypeVar('_Req')
+_Resp = TypeVar('_Resp')
+
+
+def _run_generator(gen: Generator[_Req, _Resp, _T],
+                   handle_request: Callable[[_Req], _Resp]) -> _T:
+    try:
+        request = next(gen)      # Start it going
+        while True:
+            try:
+                response = handle_request(request)
+            except Exception:
+                request = gen.throw(*sys.exc_info())
+            else:
+                request = gen.send(response)
+    except StopIteration as exc:
+        return exc.value
+    finally:
+        gen.close()
 
 
 class HttpFile(io.RawIOBase):
@@ -228,18 +249,6 @@ class Fetcher(fetch.FetcherBase):
             )
             return fetch.FileResponse(fh.url, headers, file=fh, content=None)
 
-    def _run(self, gen: Generator[fetch.Request, fetch.Response, _T], *,
-             lazy: bool = False) -> _T:
-        try:
-            request = next(gen)      # Start it going
-            while True:
-                response = self._handle_request(request, lazy=lazy)
-                request = gen.send(response)
-        except StopIteration as exc:
-            return exc.value
-        finally:
-            gen.close()
-
     def resolve(self, url: str) -> List[str]:
         """Follow a chain of aliases.
 
@@ -251,7 +260,7 @@ class Fetcher(fetch.FetcherBase):
         .TooManyAliasesError
             If there were more than :data:`.MAX_ALIASES` aliases or a cycle was found.
         """
-        return self._run(self._resolve(url))
+        return _run_generator(self._resolve(url), self._handle_request)
 
     def get(self, url: str, model_class: Type[_M], *,
             lazy: bool = False) -> _M:
@@ -286,7 +295,10 @@ class Fetcher(fetch.FetcherBase):
         requests.exception.RequestException
             Any exceptions raised by the underlying session.
         """
-        return self._run(self._get(url, model_class), lazy=lazy)
+        return _run_generator(
+            self._get(url, model_class),
+            functools.partial(self._handle_request, lazy=lazy)
+        )
 
 
 def fetch_model(url: str, model_class: Type[_M], *,
@@ -336,21 +348,7 @@ class TelescopeStateFetcher(fetch.TelescopeStateFetcherBase):
         with getting the keys from the telescope state will raise
         :exc:`.TelescopeStateError`.
         """
-        gen = self._get_url(key)
-        try:
-            request = next(gen)      # Start it going
-            while True:
-                try:
-                    response = self.telstate[request]
-                except Exception:
-                    request = gen.throw(*sys.exc_info())
-                else:
-                    request = gen.send(response)
-        except StopIteration as exc:
-            url = exc.value
-        finally:
-            gen.close()
-
+        url = _run_generator(self._get_url(key), self.telstate.__getitem__)
         return self.fetcher.get(url, model_class, lazy=lazy)
 
     def close(self) -> None:
