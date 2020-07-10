@@ -22,17 +22,23 @@ import re
 import logging
 import os
 import urllib.parse
-from typing import List, Generator, Dict, MutableMapping, Optional, Type, TypeVar, Any
+from typing import (
+    List, Generator, Dict, MutableMapping, Optional, Type, TypeVar, Any, TYPE_CHECKING
+)
 
 import requests
 
 from .. import models, fetch
+
+if TYPE_CHECKING:
+    import katsdptelstate
 
 
 _logger = logging.getLogger(__name__)
 _T = TypeVar('_T')
 _M = TypeVar('_M', bound=models.Model)
 _F = TypeVar('_F', bound='Fetcher')
+_TF = TypeVar('_TF', bound='TelescopeStateFetcher')
 
 
 class HttpFile(io.RawIOBase):
@@ -295,3 +301,78 @@ def fetch_model(url: str, model_class: Type[_M], *,
     model_cache: Dict[str, models.Model] = {}
     with Fetcher(session=session, model_cache=model_cache) as fetcher:
         return fetcher.get(url, model_class)
+
+
+class TelescopeStateFetcher:
+    """Fetches models that are referenced by telescope state.
+
+    The telescope state must have a ``sdp_model_base_url`` key with a base
+    URL, and a key per model with an URL relative to this one. If it is
+    missing then a :exc:`KeyError` will be raised from :meth:`get`, rather
+    than the constructor.
+
+    If no fetcher is provided, an internal one will be created, and closed
+    when this object is closed.
+    """
+
+    def __init__(self,
+                 telstate: 'katsdptelstate.TelescopeState',
+                 fetcher: Optional[Fetcher] = None) -> None:
+        self.telstate = telstate
+        if fetcher is not None:
+            self.fetcher = fetcher
+            self._close_fetcher = False
+        else:
+            self.fetcher = Fetcher()
+            self._close_fetcher = True
+        try:
+            self._base_url = self._get_str('sdp_model_base_url')
+        except models.TelescopeStateError as exc:
+            self._base_url = ''
+            self._base_url_exc: Optional[models.TelescopeStateError] = exc
+        else:
+            self._base_url_exc = None
+
+    def _get_str(self, key: str) -> str:
+        """Get a string key from telescope state.
+
+        Raises
+        ------
+        .TelescopeStateError
+            if there were any exceptions raised, or the key is not a string
+        """
+        try:
+            value = self.telstate[key]
+        except Exception as exc:
+            raise models.TelescopeStateError(
+                f'could not get {key}: {exc}') from exc
+        if not isinstance(value, str):
+            type_ = type(value)
+            raise models.TelescopeStateError(f'{key} should be a str, not {type_}')
+        else:
+            return value
+
+    def get(self, key: str, model_class: Type[_M], *,
+            lazy: bool = False) -> _M:
+        """Retrieve a single model.
+
+        The semantics are the same as for :meth:`Fetcher.get`. Any problems
+        with getting the keys from the telescope state will raise
+        :exc:`.TelescopeStateError`.
+        """
+        if self._base_url_exc is not None:
+            raise self._base_url_exc
+        rel_url = self._get_str(key)
+        url = urllib.parse.urljoin(self._base_url, rel_url)
+        return self.fetcher.get(url, model_class, lazy=lazy)
+
+    def close(self) -> None:
+        """Clean up resources."""
+        if self._close_fetcher:
+            self.fetcher.close()
+
+    def __enter__(self: _TF) -> _TF:
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        self.close()

@@ -88,6 +88,10 @@ class AbsoluteAliasError(ModelError):
     """An alias retried to redirect to an absolute URL."""
 
 
+class TelescopeStateError(ModelError):
+    """There was a problem retrieving references from telescope state."""
+
+
 class Model(ABC):
     """Base class for models.
 

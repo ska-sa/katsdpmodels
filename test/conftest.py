@@ -25,6 +25,7 @@ from typing import Tuple, Callable, Generator
 import pytest
 import aioresponses
 import responses
+import katsdptelstate
 import tornado.httpserver
 import tornado.netutil
 import tornado.web
@@ -115,3 +116,12 @@ def web_server() -> Generator[Callable[[str], str], None, None]:
 
     loop.call_soon_threadsafe(event.set)
     thread.join()
+
+
+@pytest.fixture
+def telstate() -> katsdptelstate.TelescopeState:
+    """Telescope state with some attributes populated."""
+    telstate = katsdptelstate.TelescopeState()
+    telstate['sdp_model_base_url'] = test_utils.BASE_URL
+    telstate['model_key'] = 'rfi_mask_ranges.h5'
+    return telstate
