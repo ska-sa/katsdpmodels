@@ -290,7 +290,7 @@ async def test_telescope_state_fetcher_bad_key(telstate, telstate_fetcher) -> No
         await telstate_fetcher.get('bad_key', DummyModel)
 
 
-async def test_telescope_state_connection_error(telstate_fetcher, mocker) -> None:
+async def test_telescope_state_fetcher_connection_error(telstate_fetcher, mocker) -> None:
     mocker.patch('katsdptelstate.aio.TelescopeState.__getitem__',
                  side_effect=katsdptelstate.ConnectionError('test error'))
     with pytest.raises(models.TelescopeStateError, match='test error'):
@@ -299,4 +299,11 @@ async def test_telescope_state_connection_error(telstate_fetcher, mocker) -> Non
 
 async def test_telescope_state_fetcher_good(telstate_fetcher, mock_aioresponses) -> None:
     model = await telstate_fetcher.get('model_key', DummyModel)
+    assert len(model.ranges) == 2
+
+
+async def test_telescope_state_fetcher_override(telstate_fetcher, mock_aioresponses) -> None:
+    telstate2 = katsdptelstate.aio.TelescopeState()
+    await telstate2.set('another_key', 'rfi_mask_ranges.h5')
+    model = await telstate_fetcher.get('another_key', DummyModel, telstate=telstate2)
     assert len(model.ranges) == 2

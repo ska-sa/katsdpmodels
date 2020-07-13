@@ -453,7 +453,7 @@ def test_telescope_state_fetcher_bad_key(telstate, telstate_fetcher) -> None:
         telstate_fetcher.get('bad_key', DummyModel)
 
 
-def test_telescope_state_connection_error(telstate_fetcher, mocker) -> None:
+def test_telescope_state_fetcher_connection_error(telstate_fetcher, mocker) -> None:
     mocker.patch('katsdptelstate.TelescopeState.__getitem__',
                  side_effect=katsdptelstate.ConnectionError('test error'))
     with pytest.raises(models.TelescopeStateError, match='test error'):
@@ -462,4 +462,11 @@ def test_telescope_state_connection_error(telstate_fetcher, mocker) -> None:
 
 def test_telescope_state_fetcher_good(telstate_fetcher, mock_responses) -> None:
     model = telstate_fetcher.get('model_key', DummyModel)
+    assert len(model.ranges) == 2
+
+
+def test_telescope_state_fetcher_override(telstate_fetcher, mock_responses) -> None:
+    telstate2 = katsdptelstate.TelescopeState()
+    telstate2['another_key'] = 'rfi_mask_ranges.h5'
+    model = telstate_fetcher.get('another_key', DummyModel, telstate=telstate2)
     assert len(model.ranges) == 2

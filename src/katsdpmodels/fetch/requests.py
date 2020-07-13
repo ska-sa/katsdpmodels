@@ -316,7 +316,7 @@ def fetch_model(url: str, model_class: Type[_M], *,
         return fetcher.get(url, model_class)
 
 
-class TelescopeStateFetcher(fetch.TelescopeStateFetcherBase):
+class TelescopeStateFetcher(fetch.TelescopeStateFetcherBase['katsdptelstate.TelescopeState']):
     """Fetches models that are referenced by telescope state.
 
     The telescope state must have a ``sdp_model_base_url`` key with a base
@@ -331,8 +331,7 @@ class TelescopeStateFetcher(fetch.TelescopeStateFetcherBase):
     def __init__(self,
                  telstate: 'katsdptelstate.TelescopeState',
                  fetcher: Optional[Fetcher] = None) -> None:
-        super().__init__()
-        self.telstate = telstate
+        super().__init__(telstate)
         if fetcher is not None:
             self.fetcher = fetcher
             self._close_fetcher = False
@@ -340,15 +339,25 @@ class TelescopeStateFetcher(fetch.TelescopeStateFetcherBase):
             self.fetcher = Fetcher()
             self._close_fetcher = True
 
+    @staticmethod
+    def _handle_request(
+            request: fetch.TelescopeStateRequest['katsdptelstate.TelescopeState']) -> str:
+        return request.telstate[request.key]
+
     def get(self, key: str, model_class: Type[_M], *,
+            telstate: Optional['katsdptelstate.TelescopeState'] = None,
             lazy: bool = False) -> _M:
         """Retrieve a single model.
 
         The semantics are the same as for :meth:`Fetcher.get`. Any problems
         with getting the keys from the telescope state will raise
         :exc:`.TelescopeStateError`.
+
+        If `telstate` is provided, it is used instead of the constructor
+        argument for fetching the model key; but the constructor telstate is
+        still used to fetch ``sdp_model_base_url``.
         """
-        url = _run_generator(self._get_url(key), self.telstate.__getitem__)
+        url = _run_generator(self._get_url(key, telstate=telstate), self._handle_request)
         return self.fetcher.get(url, model_class, lazy=lazy)
 
     def close(self) -> None:

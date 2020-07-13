@@ -195,8 +195,7 @@ class TelescopeStateFetcher(fetch.TelescopeStateFetcherBase):
     def __init__(self,
                  telstate: 'katsdptelstate.aio.TelescopeState',
                  fetcher: Optional[Fetcher] = None) -> None:
-        super().__init__()
-        self.telstate = telstate
+        super().__init__(telstate)
         if fetcher is not None:
             self.fetcher = fetcher
             self._close_fetcher = False
@@ -204,14 +203,24 @@ class TelescopeStateFetcher(fetch.TelescopeStateFetcherBase):
             self.fetcher = Fetcher()
             self._close_fetcher = True
 
-    async def get(self, key: str, model_class: Type[_M]) -> _M:
+    @staticmethod
+    async def _handle_request(
+            request: fetch.TelescopeStateRequest['katsdptelstate.aio.TelescopeState']) -> str:
+        return await request.telstate[request.key]
+
+    async def get(self, key: str, model_class: Type[_M], *,
+                  telstate: Optional['katsdptelstate.aio.TelescopeState'] = None) -> _M:
         """Retrieve a single model.
 
         The semantics are the same as for :meth:`Fetcher.get`. Any problems
         with getting the keys from the telescope state will raise
         :exc:`.TelescopeStateError`.
+
+        If `telstate` is provided, it is used instead of the constructor
+        argument for fetching the model key; but the constructor telstate is
+        still used to fetch ``sdp_model_base_url``.
         """
-        url = await _run_generator(self._get_url(key), self.telstate.__getitem__)
+        url = await _run_generator(self._get_url(key, telstate=telstate), self._handle_request)
         return await self.fetcher.get(url, model_class)
 
     async def close(self) -> None:
