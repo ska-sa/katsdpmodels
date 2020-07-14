@@ -17,17 +17,44 @@
 """Fetch models asynchronously over HTTP."""
 
 import io
+import sys
 import urllib.parse
-from typing import List, Dict, Generator, Optional, MutableMapping, Type, TypeVar, Any
+from typing import (
+    List, Dict, Generator, Optional, MutableMapping, Type, Callable, Awaitable,
+    TypeVar, Any, TYPE_CHECKING
+)
 
 import aiohttp
 
 from .. import models, fetch
 
+if TYPE_CHECKING:
+    import katsdptelstate.aio
+
 
 _T = TypeVar('_T')
 _M = TypeVar('_M', bound=models.Model)
 _F = TypeVar('_F', bound='Fetcher')
+_TF = TypeVar('_TF', bound='TelescopeStateFetcher')
+_Req = TypeVar('_Req')
+_Resp = TypeVar('_Resp')
+
+
+async def _run_generator(gen: Generator[_Req, _Resp, _T],
+                         handle_request: Callable[[_Req], Awaitable[_Resp]]) -> _T:
+    try:
+        request = next(gen)      # Start it going
+        while True:
+            try:
+                response = await handle_request(request)
+            except Exception:
+                request = gen.throw(*sys.exc_info())
+            else:
+                request = gen.send(response)
+    except StopIteration as exc:
+        return exc.value
+    finally:
+        gen.close()
 
 
 class Fetcher(fetch.FetcherBase):
@@ -107,17 +134,6 @@ class Fetcher(fetch.FetcherBase):
                 return fetch.FileResponse(
                     str(resp.url), resp.headers, file=file, content=content)
 
-    async def _run(self, gen: Generator[fetch.Request, fetch.Response, _T]) -> _T:
-        try:
-            request = next(gen)      # Start it going
-            while True:
-                response = await self._handle_request(request)
-                request = gen.send(response)
-        except StopIteration as exc:
-            return exc.value
-        finally:
-            gen.close()
-
     async def resolve(self, url: str) -> List[str]:
         """Follow a chain of aliases.
 
@@ -129,7 +145,7 @@ class Fetcher(fetch.FetcherBase):
         .TooManyAliasesError
             If there were more than :data:`.MAX_ALIASES` aliases or a cycle was found.
         """
-        return await self._run(self._resolve(url))
+        return await _run_generator(self._resolve(url), self._handle_request)
 
     async def get(self, url: str, model_class: Type[_M]) -> _M:
         """Retrieve a single model.
@@ -146,7 +162,7 @@ class Fetcher(fetch.FetcherBase):
         aiohttp.ClientError
             Any exceptions raised by the underlying session.
         """
-        return await self._run(self._get(url, model_class))
+        return await _run_generator(self._get(url, model_class), self._handle_request)
 
 
 async def fetch_model(url: str, model_class: Type[_M], *,
@@ -162,3 +178,49 @@ async def fetch_model(url: str, model_class: Type[_M], *,
     model_cache: Dict[str, models.Model] = {}
     async with Fetcher(session=session, model_cache=model_cache) as fetcher:
         return await fetcher.get(url, model_class)
+
+
+class TelescopeStateFetcher(fetch.TelescopeStateFetcherBase['katsdptelstate.aio.TelescopeState']):
+    __doc__ = fetch.TelescopeStateFetcherBase.__doc__
+
+    def __init__(self,
+                 telstate: 'katsdptelstate.aio.TelescopeState',
+                 fetcher: Optional[Fetcher] = None) -> None:
+        super().__init__(telstate)
+        if fetcher is not None:
+            self.fetcher = fetcher
+            self._close_fetcher = False
+        else:
+            self.fetcher = Fetcher()
+            self._close_fetcher = True
+
+    @staticmethod
+    async def _handle_request(
+            request: fetch.TelescopeStateRequest['katsdptelstate.aio.TelescopeState']) -> str:
+        return await request.telstate[request.key]
+
+    async def get(self, key: str, model_class: Type[_M], *,
+                  telstate: Optional['katsdptelstate.aio.TelescopeState'] = None) -> _M:
+        """Retrieve a single model.
+
+        The semantics are the same as for :meth:`Fetcher.get`. Any problems
+        with getting the keys from the telescope state will raise
+        :exc:`.TelescopeStateError`.
+
+        If `telstate` is provided, it is used instead of the constructor
+        argument for fetching the model key; but the constructor telstate is
+        still used to fetch ``sdp_model_base_url``.
+        """
+        url = await _run_generator(self._get_url(key, telstate=telstate), self._handle_request)
+        return await self.fetcher.get(url, model_class)
+
+    async def close(self) -> None:
+        """Clean up resources."""
+        if self._close_fetcher:
+            await self.fetcher.close()
+
+    async def __aenter__(self: _TF) -> _TF:
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        await self.close()

@@ -21,7 +21,7 @@ import logging
 import pathlib
 import re
 import urllib.parse
-from typing import List, Dict, Generator, Mapping, MutableMapping, Optional, Type, TypeVar
+from typing import List, Dict, Generator, Mapping, MutableMapping, Optional, Type, TypeVar, Generic
 
 from .. import models
 from ..models import _FileLike
@@ -30,6 +30,7 @@ from ..models import _FileLike
 MAX_ALIASES = 30     #: Maximum number of aliases that will be followed to find a model
 _logger = logging.getLogger(__name__)
 _M = TypeVar('_M', bound=models.Model)
+_TS = TypeVar('_TS')
 
 
 class ResponseType(enum.Enum):
@@ -263,3 +264,58 @@ class FetcherBase:
             self._model_cache.clear()
         else:
             self._model_cache = {}     # Allow garbage collection of the old cache
+
+
+class TelescopeStateRequest(Generic[_TS]):
+    """A request for a key from a telescope state."""
+
+    def __init__(self, telstate: _TS, key: str) -> None:
+        self.telstate = telstate
+        self.key = key
+
+
+_TSGenerator = Generator[TelescopeStateRequest[_TS], object, str]
+
+
+class TelescopeStateFetcherBase(Generic[_TS]):
+    """Fetches models that are referenced by telescope state.
+
+    The telescope state must have a ``sdp_model_base_url`` key with a base
+    URL, and a key per model with an URL relative to this one. If it is
+    missing then a :exc:`KeyError` will be raised from :meth:`get`, rather
+    than the constructor.
+
+    If no fetcher is provided, an internal one will be created, and closed
+    when this object is closed.
+
+    This class is *not* thread-safe.
+    """
+
+    def __init__(self, telstate: _TS) -> None:
+        self.telstate = telstate
+        # Cache of sdp_model_base_url
+        self._base_url: Optional[str] = None
+
+    def _get_str(self, telstate: _TS, key: str) -> _TSGenerator:
+        """Get a string-valued key from the telescope state.
+
+        It yields the key to the caller, which should either respond
+        with the value or throw in an exception.
+        """
+        try:
+            value = yield TelescopeStateRequest(telstate, key)
+        except Exception as exc:
+            raise models.TelescopeStateError(f'could not get {key}: {exc}') from exc
+        if not isinstance(value, str):
+            type_ = type(value)
+            raise models.TelescopeStateError(f'{key} should be a str, not {type_}')
+        else:
+            return value
+
+    def _get_url(self, key: str, *, telstate: Optional[_TS] = None) -> _TSGenerator:
+        if self._base_url is None:
+            self._base_url = yield from self._get_str(self.telstate, 'sdp_model_base_url')
+        if telstate is None:
+            telstate = self.telstate
+        rel_url = yield from self._get_str(telstate, key)
+        return urllib.parse.urljoin(self._base_url, rel_url)

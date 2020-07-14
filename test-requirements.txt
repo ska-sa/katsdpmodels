@@ -3,13 +3,19 @@ attrs                           # via pytest
 coverage
 importlib-metadata              # via pytest
 more-itertools                  # via pytest
+msgpack                         # via katsdptelstate
+netifaces                       # via katsdptelstate
 packaging                       # via pytest
 pluggy                          # via pytest
 py                              # via pytest
 pytest
 pytest-asyncio==0.12.0
 pytest-cov
+pytest-mock==3.1.1
+redis                           # via katsdptelstate
 responses==0.10.14
 tornado
 wcwidth                         # via pytest
 zipp                            # via importlib-metadata
+
+katsdptelstate @ git+https://github.com/ska-sa/katsdptelstate

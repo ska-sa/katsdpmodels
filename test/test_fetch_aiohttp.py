@@ -24,15 +24,18 @@ import h5py
 import pytest
 import aiohttp
 import yarl
+import katsdptelstate.aio.memory
 
 from katsdpmodels import models, fetch
 import katsdpmodels.fetch.aiohttp as fetch_aiohttp
 from test_utils import get_data, get_data_url, get_file_url, DummyModel
 
 
+pytestmark = [pytest.mark.asyncio]
+
+
 @pytest.mark.parametrize('use_file', [True, False])
 @pytest.mark.parametrize('filename', ['rfi_mask_ranges.h5', 'direct.alias', 'indirect.alias'])
-@pytest.mark.asyncio
 async def test_fetch_model_simple(use_file, filename, web_server) -> None:
     url = get_file_url(filename) if use_file else web_server(filename)
     with await fetch_aiohttp.fetch_model(url, DummyModel) as model:
@@ -41,7 +44,6 @@ async def test_fetch_model_simple(use_file, filename, web_server) -> None:
     assert model.is_closed
 
 
-@pytest.mark.asyncio
 async def test_fetch_model_alias_loop(web_server) -> None:
     url = web_server('loop.alias')
     with pytest.raises(models.TooManyAliasesError) as exc_info:
@@ -50,7 +52,6 @@ async def test_fetch_model_alias_loop(web_server) -> None:
     assert exc_info.value.original_url == url
 
 
-@pytest.mark.asyncio
 async def test_fetch_model_too_many_aliases(web_server, monkeypatch) -> None:
     monkeypatch.setattr(fetch, 'MAX_ALIASES', 1)
     with pytest.raises(models.TooManyAliasesError):
@@ -60,7 +61,6 @@ async def test_fetch_model_too_many_aliases(web_server, monkeypatch) -> None:
         pass
 
 
-@pytest.mark.asyncio
 async def test_fetch_model_absolute_alias(web_server) -> None:
     url = web_server('to_file.alias')
     with pytest.raises(models.AbsoluteAliasError) as exc_info:
@@ -70,7 +70,6 @@ async def test_fetch_model_absolute_alias(web_server) -> None:
 
 
 @pytest.mark.parametrize('filename', ['bad_model_type.h5', 'no_model_type.h5'])
-@pytest.mark.asyncio
 async def test_fetch_model_model_type_error(filename, web_server) -> None:
     url = web_server(filename)
     with pytest.raises(models.ModelTypeError) as exc_info:
@@ -80,7 +79,6 @@ async def test_fetch_model_model_type_error(filename, web_server) -> None:
     assert 'rfi_mask' in str(exc_info.value)
 
 
-@pytest.mark.asyncio
 async def test_fetch_model_bad_created(web_server) -> None:
     url = web_server('bad_created.h5')
     with pytest.raises(models.DataError, match='Invalid creation timestamp') as exc_info:
@@ -90,7 +88,6 @@ async def test_fetch_model_bad_created(web_server) -> None:
 
 
 @pytest.mark.parametrize('filename', ['bad_model_version.h5', 'no_model_version.h5'])
-@pytest.mark.asyncio
 async def test_fetch_model_model_version_error(filename, web_server) -> None:
     url = web_server(filename)
     with pytest.raises(models.ModelVersionError) as exc_info:
@@ -100,7 +97,6 @@ async def test_fetch_model_model_version_error(filename, web_server) -> None:
     assert 'model_version' in str(exc_info.value)
 
 
-@pytest.mark.asyncio
 async def test_fetch_model_cached_model_type_error(web_server) -> None:
     class OtherModel(models.SimpleHDF5Model):
         model_type = 'other'
@@ -121,7 +117,6 @@ async def test_fetch_model_cached_model_type_error(web_server) -> None:
         assert exc_info.value.original_url == url
 
 
-@pytest.mark.asyncio
 async def test_fetch_model_bad_content_type(mock_aioresponses) -> None:
     data = get_data('rfi_mask_ranges.h5')
     url = get_data_url('bad_content_type.h5')
@@ -134,7 +129,6 @@ async def test_fetch_model_bad_content_type(mock_aioresponses) -> None:
     assert exc_info.value.original_url == url
 
 
-@pytest.mark.asyncio
 async def test_fetch_model_bad_extension(web_server) -> None:
     url = web_server('wrong_extension.blah')
     with pytest.raises(models.FileTypeError) as exc_info:
@@ -144,7 +138,6 @@ async def test_fetch_model_bad_extension(web_server) -> None:
     assert exc_info.value.original_url == url
 
 
-@pytest.mark.asyncio
 async def test_fetch_model_not_hdf5(web_server) -> None:
     url = web_server('not_hdf5.h5')
     with pytest.raises(models.DataError) as exc_info:
@@ -153,7 +146,6 @@ async def test_fetch_model_not_hdf5(web_server) -> None:
     assert exc_info.value.original_url == url
 
 
-@pytest.mark.asyncio
 async def test_fetch_model_checksum_ok(mock_aioresponses) -> None:
     data = get_data('rfi_mask_ranges.h5')
     digest = hashlib.sha256(data).hexdigest()
@@ -163,7 +155,6 @@ async def test_fetch_model_checksum_ok(mock_aioresponses) -> None:
         assert model.checksum == digest
 
 
-@pytest.mark.asyncio
 async def test_fetch_model_checksum_bad(mock_aioresponses) -> None:
     data = get_data('rfi_mask_ranges.h5')
     digest = hashlib.sha256(data).hexdigest()
@@ -177,7 +168,6 @@ async def test_fetch_model_checksum_bad(mock_aioresponses) -> None:
 
 
 @pytest.mark.parametrize('filename', ['does_not_exist.h5', 'does_not_exist.alias'])
-@pytest.mark.asyncio
 async def test_fetch_model_bad_http_status(filename, web_server) -> None:
     url = web_server(filename)
     with pytest.raises(aiohttp.ClientError) as exc_info:
@@ -185,7 +175,6 @@ async def test_fetch_model_bad_http_status(filename, web_server) -> None:
     assert exc_info.value.status == 404
 
 
-@pytest.mark.asyncio
 async def test_fetch_model_http_redirect(mock_aioresponses) -> None:
     url = get_data_url('subdir/redirect.alias')
     # aioresponses doesn't properly handle relative URLs in redirects, so we
@@ -198,14 +187,12 @@ async def test_fetch_model_http_redirect(mock_aioresponses) -> None:
         assert len(model.ranges) == 2
 
 
-@pytest.mark.asyncio
 async def test_fetch_model_connection_error(mock_aioresponses) -> None:
     # aioresponses raises ConnectionError for any unregistered URL
     with pytest.raises(aiohttp.ClientConnectionError):
         await fetch_aiohttp.fetch_model(get_data_url('does_not_exist.h5'), DummyModel)
 
 
-@pytest.mark.asyncio
 async def test_fetcher_caching(mock_aioresponses) -> None:
     async with fetch_aiohttp.Fetcher() as fetcher:
         model1 = await fetcher.get(get_data_url('rfi_mask_ranges.h5'), DummyModel)
@@ -230,7 +217,6 @@ def _tracing_session(urls: List[yarl.URL]) -> aiohttp.ClientSession:
     return aiohttp.ClientSession(trace_configs=[trace_config])
 
 
-@pytest.mark.asyncio
 async def test_fetcher_custom_session(web_server) -> None:
     urls: List[yarl.URL] = []
     async with _tracing_session(urls) as session:
@@ -242,7 +228,6 @@ async def test_fetcher_custom_session(web_server) -> None:
     assert session.closed
 
 
-@pytest.mark.asyncio
 async def test_custom_session(web_server) -> None:
     urls: List[yarl.URL] = []
     async with _tracing_session(urls) as session:
@@ -252,7 +237,6 @@ async def test_custom_session(web_server) -> None:
     assert session.closed
 
 
-@pytest.mark.asyncio
 async def test_fetcher_resolve(web_server) -> None:
     url = web_server('indirect.alias')
     async with fetch_aiohttp.Fetcher() as fetcher:
@@ -262,3 +246,64 @@ async def test_fetcher_resolve(web_server) -> None:
         web_server('direct.alias'),
         web_server('rfi_mask_ranges.h5')
     ]
+
+
+@pytest.fixture
+async def telstate(telstate):
+    # Extract the memory store from the sync telstate, wrap into an async telstate
+    backend = katsdptelstate.aio.memory.MemoryBackend.from_sync(telstate.backend)
+    yield katsdptelstate.aio.TelescopeState(backend)
+    backend.close()
+    await backend.wait_closed()
+
+
+@pytest.fixture
+async def telstate_fetcher(telstate):
+    fetcher = fetch_aiohttp.TelescopeStateFetcher(telstate)
+    async with fetcher:
+        yield fetcher
+
+
+async def test_telescope_state_fetcher_missing_base_url(telstate) -> None:
+    await telstate.delete('sdp_model_base_url')
+    async with fetch_aiohttp.TelescopeStateFetcher(telstate) as fetcher:
+        with pytest.raises(models.TelescopeStateError, match='not found'):
+            await fetcher.get('model_key', DummyModel)
+
+
+async def test_telescope_state_fetcher_bad_base_url(telstate) -> None:
+    await telstate.delete('sdp_model_base_url')
+    await telstate.set('sdp_model_base_url', b'Not a string')
+    async with fetch_aiohttp.TelescopeStateFetcher(telstate) as fetcher:
+        with pytest.raises(models.TelescopeStateError, match='should be a str'):
+            await fetcher.get('model_key', DummyModel)
+
+
+async def test_telescope_state_fetcher_missing_key(telstate_fetcher) -> None:
+    with pytest.raises(models.TelescopeStateError, match='not found'):
+        await telstate_fetcher.get('missing_key', DummyModel)
+
+
+async def test_telescope_state_fetcher_bad_key(telstate, telstate_fetcher) -> None:
+    await telstate.set('bad_key', 123)
+    with pytest.raises(models.TelescopeStateError, match='should be a str'):
+        await telstate_fetcher.get('bad_key', DummyModel)
+
+
+async def test_telescope_state_fetcher_connection_error(telstate_fetcher, mocker) -> None:
+    mocker.patch('katsdptelstate.aio.TelescopeState.__getitem__',
+                 side_effect=katsdptelstate.ConnectionError('test error'))
+    with pytest.raises(models.TelescopeStateError, match='test error'):
+        await telstate_fetcher.get('model_key', DummyModel)
+
+
+async def test_telescope_state_fetcher_good(telstate_fetcher, mock_aioresponses) -> None:
+    model = await telstate_fetcher.get('model_key', DummyModel)
+    assert len(model.ranges) == 2
+
+
+async def test_telescope_state_fetcher_override(telstate_fetcher, mock_aioresponses) -> None:
+    telstate2 = katsdptelstate.aio.TelescopeState()
+    await telstate2.set('another_key', 'rfi_mask_ranges.h5')
+    model = await telstate_fetcher.get('another_key', DummyModel, telstate=telstate2)
+    assert len(model.ranges) == 2

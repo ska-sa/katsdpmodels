@@ -23,6 +23,7 @@ import h5py
 import pytest
 import requests
 import responses
+import katsdptelstate
 
 from katsdpmodels import models, fetch
 import katsdpmodels.fetch.requests as fetch_requests
@@ -417,3 +418,55 @@ def test_lazy_local() -> None:
     with fetch_requests.Fetcher() as fetcher:
         model = fetcher.get(get_file_url('rfi_mask_ranges.h5'), DummyModel, lazy=True)
         assert len(model.ranges) == 2
+
+
+@pytest.fixture
+def telstate_fetcher(telstate):
+    fetcher = fetch_requests.TelescopeStateFetcher(telstate)
+    with fetcher:
+        yield fetcher
+
+
+def test_telescope_state_fetcher_missing_base_url(telstate) -> None:
+    telstate.delete('sdp_model_base_url')
+    with fetch_requests.TelescopeStateFetcher(telstate) as fetcher:
+        with pytest.raises(models.TelescopeStateError, match='not found'):
+            fetcher.get('model_key', DummyModel)
+
+
+def test_telescope_state_fetcher_bad_base_url(telstate) -> None:
+    telstate.delete('sdp_model_base_url')
+    telstate['sdp_model_base_url'] = b'Not a string'
+    with fetch_requests.TelescopeStateFetcher(telstate) as fetcher:
+        with pytest.raises(models.TelescopeStateError, match='should be a str'):
+            fetcher.get('model_key', DummyModel)
+
+
+def test_telescope_state_fetcher_missing_key(telstate_fetcher) -> None:
+    with pytest.raises(models.TelescopeStateError, match='not found'):
+        telstate_fetcher.get('missing_key', DummyModel)
+
+
+def test_telescope_state_fetcher_bad_key(telstate, telstate_fetcher) -> None:
+    telstate['bad_key'] = 123
+    with pytest.raises(models.TelescopeStateError, match='should be a str'):
+        telstate_fetcher.get('bad_key', DummyModel)
+
+
+def test_telescope_state_fetcher_connection_error(telstate_fetcher, mocker) -> None:
+    mocker.patch('katsdptelstate.TelescopeState.__getitem__',
+                 side_effect=katsdptelstate.ConnectionError('test error'))
+    with pytest.raises(models.TelescopeStateError, match='test error'):
+        telstate_fetcher.get('model_key', DummyModel)
+
+
+def test_telescope_state_fetcher_good(telstate_fetcher, mock_responses) -> None:
+    model = telstate_fetcher.get('model_key', DummyModel)
+    assert len(model.ranges) == 2
+
+
+def test_telescope_state_fetcher_override(telstate_fetcher, mock_responses) -> None:
+    telstate2 = katsdptelstate.TelescopeState()
+    telstate2['another_key'] = 'rfi_mask_ranges.h5'
+    model = telstate_fetcher.get('another_key', DummyModel, telstate=telstate2)
+    assert len(model.ranges) == 2

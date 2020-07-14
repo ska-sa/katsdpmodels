@@ -12,6 +12,14 @@ Subpackages
 Submodules
 ----------
 
+katsdpmodels.band\_mask module
+------------------------------
+
+.. automodule:: katsdpmodels.band_mask
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 katsdpmodels.models module
 --------------------------
 
