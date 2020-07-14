@@ -180,17 +180,8 @@ async def fetch_model(url: str, model_class: Type[_M], *,
         return await fetcher.get(url, model_class)
 
 
-class TelescopeStateFetcher(fetch.TelescopeStateFetcherBase):
-    """Fetches models that are referenced by telescope state.
-
-    The telescope state must have a ``sdp_model_base_url`` key with a base
-    URL, and a key per model with an URL relative to this one. If it is
-    missing then a :exc:`KeyError` will be raised from :meth:`get`, rather
-    than the constructor.
-
-    If no fetcher is provided, an internal one will be created, and closed
-    when this object is closed.
-    """
+class TelescopeStateFetcher(fetch.TelescopeStateFetcherBase['katsdptelstate.aio.TelescopeState']):
+    __doc__ = fetch.TelescopeStateFetcherBase.__doc__
 
     def __init__(self,
                  telstate: 'katsdptelstate.aio.TelescopeState',

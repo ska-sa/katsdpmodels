@@ -278,13 +278,15 @@ _TSGenerator = Generator[TelescopeStateRequest[_TS], object, str]
 
 
 class TelescopeStateFetcherBase(Generic[_TS]):
-    """Base class for fetching models from telescope state.
+    """Fetches models that are referenced by telescope state.
 
-    This is a low-level class not intended for direct usage. It handles
-    the mechanics of deciding which telescope state keys are needed and
-    assembling them into an URL. The details of how to get data out of
-    telescope state (either synchronously or asynchronously) and passing
-    that to a model class is left to the subclass.
+    The telescope state must have a ``sdp_model_base_url`` key with a base
+    URL, and a key per model with an URL relative to this one. If it is
+    missing then a :exc:`KeyError` will be raised from :meth:`get`, rather
+    than the constructor.
+
+    If no fetcher is provided, an internal one will be created, and closed
+    when this object is closed.
 
     This class is *not* thread-safe.
     """
