@@ -1,4 +1,5 @@
 aiohttp
+aiohttp-retry
 astropy
 async-timeout                 # via aiohttp
 attrs                         # via aiohttp

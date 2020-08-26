@@ -44,6 +44,15 @@ async def test_fetch_model_simple(use_file, filename, web_server) -> None:
     assert model.is_closed
 
 
+async def test_fetch_model_retry(web_server) -> None:
+    """Test that retry happens on a 5xx server error."""
+    url = web_server('rfi_mask_ranges.h5').replace('/static/', '/failonce/')
+    with await fetch_aiohttp.fetch_model(url, DummyModel) as model:
+        assert len(model.ranges) == 2
+        assert not model.is_closed
+    assert model.is_closed
+
+
 async def test_fetch_model_alias_loop(web_server) -> None:
     url = web_server('loop.alias')
     with pytest.raises(models.TooManyAliasesError) as exc_info:
@@ -170,7 +179,7 @@ async def test_fetch_model_checksum_bad(mock_aioresponses) -> None:
 @pytest.mark.parametrize('filename', ['does_not_exist.h5', 'does_not_exist.alias'])
 async def test_fetch_model_bad_http_status(filename, web_server) -> None:
     url = web_server(filename)
-    with pytest.raises(aiohttp.ClientError) as exc_info:
+    with pytest.raises(aiohttp.ClientResponseError) as exc_info:
         await fetch_aiohttp.fetch_model(url, DummyModel)
     assert exc_info.value.status == 404
 
