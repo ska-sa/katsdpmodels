@@ -195,6 +195,15 @@ def test_fetch_model_simple(use_file, filename, web_server) -> None:
     assert model.is_closed
 
 
+def test_fetch_model_retry(web_server) -> None:
+    """Test that retry happens on a 5xx server error."""
+    url = web_server('rfi_mask_ranges.h5').replace('/static/', '/failonce/')
+    with fetch_requests.fetch_model(url, DummyModel) as model:
+        assert len(model.ranges) == 2
+        assert not model.is_closed
+    assert model.is_closed
+
+
 def test_fetch_model_alias_loop(web_server) -> None:
     url = web_server('loop.alias')
     with pytest.raises(models.TooManyAliasesError) as exc_info:

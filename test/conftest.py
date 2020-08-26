@@ -20,7 +20,7 @@ import os
 import pathlib
 import threading
 import urllib.parse
-from typing import Tuple, Callable, Generator
+from typing import Tuple, Callable, Generator, Set
 
 import pytest
 import aioresponses
@@ -72,6 +72,18 @@ def mock_aioresponses() -> Generator[aioresponses.aioresponses, None, None]:
         yield rsps
 
 
+class _FailOnceHandler(tornado.web.RequestHandler):
+    def initialize(self, failed: Set[str]) -> None:
+        self.failed = failed
+
+    def get(self, path: str) -> None:
+        if path not in self.failed:
+            self.failed.add(path)
+            raise tornado.web.HTTPError(500, 'Test error handling')
+        else:
+            self.redirect(f'/static/{path}')
+
+
 @pytest.fixture
 def web_server() -> Generator[Callable[[str], str], None, None]:
     """Fixture that runs a Tornado web server in a separate thread.
@@ -82,7 +94,12 @@ def web_server() -> Generator[Callable[[str], str], None, None]:
     async def server_coro(info_future: 'concurrent.futures.Future[_Info]') -> None:
         try:
             data_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data')
-            app = tornado.web.Application([], static_path=data_dir)
+            app = tornado.web.Application(
+                [
+                    (r"/failonce/(.*)", _FailOnceHandler, dict(failed=set()))
+                ],
+                static_path=data_dir
+            )
             sockets = tornado.netutil.bind_sockets(0, '127.0.0.1')
             port = sockets[0].getsockname()[1]
             server = tornado.httpserver.HTTPServer(app)
