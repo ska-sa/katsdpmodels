@@ -21,10 +21,11 @@ import sys
 import urllib.parse
 from typing import (
     List, Dict, Generator, Optional, MutableMapping, Type, Callable, Awaitable,
-    TypeVar, Any, TYPE_CHECKING
+    TypeVar, Union, Any, TYPE_CHECKING
 )
 
 import aiohttp
+import aiohttp_retry
 
 from .. import models, fetch
 
@@ -38,6 +39,7 @@ _F = TypeVar('_F', bound='Fetcher')
 _TF = TypeVar('_TF', bound='TelescopeStateFetcher')
 _Req = TypeVar('_Req')
 _Resp = TypeVar('_Resp')
+ClientSession = Union[aiohttp.ClientSession, aiohttp_retry.RetryClient]
 
 
 async def _run_generator(gen: Generator[_Req, _Resp, _T],
@@ -94,18 +96,18 @@ class Fetcher(fetch.FetcherBase):
     """
 
     def __init__(self, *,
-                 session: Optional[aiohttp.ClientSession] = None,
+                 session: Optional[ClientSession] = None,
                  model_cache: Optional[MutableMapping[str, models.Model]] = None) -> None:
         super().__init__(model_cache=model_cache)
         if session is None:
-            self._session = aiohttp.ClientSession()
+            self._session = aiohttp_retry.RetryClient()
             self._close_session = True
         else:
             self._session = session
             self._close_session = False
 
     @property
-    def session(self) -> aiohttp.ClientSession:
+    def session(self) -> ClientSession:
         return self._session
 
     async def close(self) -> None:
@@ -123,16 +125,27 @@ class Fetcher(fetch.FetcherBase):
         assert request.response_type in {fetch.ResponseType.TEXT, fetch.ResponseType.FILE}
         if urllib.parse.urlsplit(request.url).scheme == 'file':
             return self._handle_file_scheme(request)
-        elif request.response_type == fetch.ResponseType.TEXT:
-            async with self._session.get(request.url, raise_for_status=True) as resp:
-                text = await resp.text()
-                return fetch.TextResponse(str(resp.url), resp.headers, text)
         else:
-            async with self._session.get(request.url, raise_for_status=True) as resp:
-                content = await resp.read()
-                file = io.BytesIO(content)
-                return fetch.FileResponse(
-                    str(resp.url), resp.headers, file=file, content=content)
+            extra_args = {}
+            if isinstance(self._session, aiohttp_retry.RetryClient):
+                extra_args = dict(
+                    retry_attempts=5,
+                    retry_exceptions={aiohttp.ClientError}
+                )
+            # Note: don't pass raise_for_status=True to get, because if
+            # self._session is an aiohttp_retry.RetryClient it will cause it
+            # to retry on all HTTP errors (including e.g. 404) instead of
+            # just server errors.
+            async with self._session.get(request.url, **extra_args) as resp:
+                resp.raise_for_status()
+                if request.response_type == fetch.ResponseType.TEXT:
+                    text = await resp.text()
+                    return fetch.TextResponse(str(resp.url), resp.headers, text)
+                else:
+                    content = await resp.read()
+                    file = io.BytesIO(content)
+                    return fetch.FileResponse(
+                        str(resp.url), resp.headers, file=file, content=content)
 
     async def resolve(self, url: str) -> List[str]:
         """Follow a chain of aliases.
@@ -166,7 +179,7 @@ class Fetcher(fetch.FetcherBase):
 
 
 async def fetch_model(url: str, model_class: Type[_M], *,
-                      session: Optional[aiohttp.ClientSession] = None) -> _M:
+                      session: Optional[ClientSession] = None) -> _M:
     """Retrieve a single model.
 
     This is a convenience function that should only be used when loading just a

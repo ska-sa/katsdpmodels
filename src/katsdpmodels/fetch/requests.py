@@ -30,6 +30,7 @@ from typing import (
 )
 
 import requests
+import urllib3
 
 from .. import models, fetch
 
@@ -44,6 +45,8 @@ _F = TypeVar('_F', bound='Fetcher')
 _TF = TypeVar('_TF', bound='TelescopeStateFetcher')
 _Req = TypeVar('_Req')
 _Resp = TypeVar('_Resp')
+
+DEFAULT_RETRIES = urllib3.Retry(total=4, status_forcelist=range(500, 600), raise_on_status=False)
 
 
 def _run_generator(gen: Generator[_Req, _Resp, _T],
@@ -204,6 +207,10 @@ class Fetcher(fetch.FetcherBase):
         super().__init__(model_cache=model_cache)
         if session is None:
             self._session = requests.Session()
+            for protocol in ['https://', 'http://']:
+                self._session.mount(
+                    protocol, requests.adapters.HTTPAdapter(max_retries=DEFAULT_RETRIES)
+                )
             self._close_session = True
         else:
             self._session = session
