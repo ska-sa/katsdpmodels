@@ -100,7 +100,11 @@ class Fetcher(fetch.FetcherBase):
                  model_cache: Optional[MutableMapping[str, models.Model]] = None) -> None:
         super().__init__(model_cache=model_cache)
         if session is None:
-            self._session = aiohttp_retry.RetryClient()
+            retry_options = aiohttp_retry.RetryOptions(
+                attempts=5,
+                exceptions={aiohttp.ClientError}
+            )
+            self._session = aiohttp_retry.RetryClient(retry_options=retry_options)
             self._close_session = True
         else:
             self._session = session
@@ -126,17 +130,11 @@ class Fetcher(fetch.FetcherBase):
         if urllib.parse.urlsplit(request.url).scheme == 'file':
             return self._handle_file_scheme(request)
         else:
-            extra_args = {}
-            if isinstance(self._session, aiohttp_retry.RetryClient):
-                extra_args = dict(
-                    retry_attempts=5,
-                    retry_exceptions={aiohttp.ClientError}
-                )
             # Note: don't pass raise_for_status=True to get, because if
             # self._session is an aiohttp_retry.RetryClient it will cause it
             # to retry on all HTTP errors (including e.g. 404) instead of
             # just server errors.
-            async with self._session.get(request.url, **extra_args) as resp:
+            async with self._session.get(request.url) as resp:
                 resp.raise_for_status()
                 if request.response_type == fetch.ResponseType.TEXT:
                     text = await resp.text()
