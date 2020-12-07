@@ -21,7 +21,7 @@ sphinxcontrib-htmlhelp             # via sphinx
 sphinxcontrib-jsmath               # via sphinx
 sphinxcontrib-qthelp               # via sphinx
 sphinxcontrib-serializinghtml      # via sphinx
-sphinxcontrib-tikz
+sphinxcontrib-tikz==0.4.9
 sphinxcontrib-websupport           # via sphinx
 sphinx-rtd-theme
 urllib3                            # via requests
