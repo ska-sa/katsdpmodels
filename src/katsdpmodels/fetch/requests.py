@@ -280,12 +280,19 @@ class Fetcher(fetch.FetcherBase):
 
         Parameters
         ----------
+        url
+            The URL to fetch.
+        model_class
+            The base class for the model type (do not use concrete
+            format-specific classes). The returned model will be of this
+            type.
         lazy
             If true, create a view of the HDF5 file that only retrieves data
             as it is needed. Whether this actually allows data to be loaded
             lazily depends on the `model_class`: some model classes will read
             all the data into memory on creation, in which case lazy loading
-            may perform significantly worse.
+            may perform significantly worse (at the time of writing, no model
+            classes support lazy loading).
 
             Lazy loading imposes some additional requirements:
 
