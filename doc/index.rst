@@ -5,7 +5,8 @@ Welcome to katsdpmodels's documentation!
    :maxdepth: 2
    :caption: Contents:
 
-   modules
+   user/index
+   Reference <modules>
 
 
 Indices and tables

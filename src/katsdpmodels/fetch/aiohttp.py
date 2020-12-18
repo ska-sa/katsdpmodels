@@ -166,6 +166,15 @@ class Fetcher(fetch.FetcherBase):
         the caller must close the fetcher once it no longer needs any of the
         models.
 
+        Parameters
+        ----------
+        url
+            The URL to fetch.
+        model_class
+            The base class for the model type (do not use concrete
+            format-specific classes). The returned model will be of this
+            type.
+
         Raises
         ------
         .ModelError

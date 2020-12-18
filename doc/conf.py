@@ -34,7 +34,8 @@ release = katsdpmodels.__version__
 extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.napoleon',
-    'sphinx.ext.intersphinx'
+    'sphinx.ext.intersphinx',
+    'sphinxcontrib.tikz',
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -54,6 +55,8 @@ intersphinx_mapping = {
     'aiohttp': ('https://docs.aiohttp.org/en/stable', None),
     'katsdptelstate': ('https://katsdptelstate.readthedocs.io/en/latest', None)
 }
+
+tikz_latex_preamble = r'\usepackage{underscore}'
 
 # -- Options for HTML output -------------------------------------------------
 
