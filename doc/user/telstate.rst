@@ -76,7 +76,7 @@ Band mask
 
 API
 ---
-In future `katdal`_ may will be updated to hide these details and allow models to
+In future `katdal`_ may be updated to hide these details and allow models to
 be fetched directly from a katdal data set. Until then, one can obtain the
 underlying telescope state object from a dataset as
 ``dataset.source.telstate``. Pass it to the constructor of

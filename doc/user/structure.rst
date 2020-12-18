@@ -25,7 +25,7 @@ of how these aliases point to each other.
 
 Below, we list the naming conventions currently in use for MeerKAT for
 :samp:`{target}` and :samp:`{config}`. Other telescopes will likely use
-different configuration management system and need to describe a different
+a different configuration management system and need to describe a different
 range of targets, so are not expected to use the same naming conventions.
 
 RFI mask

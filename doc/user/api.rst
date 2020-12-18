@@ -4,7 +4,7 @@ API
 Class hierarchy
 ---------------
 Models are organised in a class hierarchy. At the base of the hierarchy is
-:class:`katsdpmodels.model.Model`. In contains general metadata about the
+:class:`katsdpmodels.model.Model`. It contains general metadata about the
 model, as well as a :meth:`~katsdpmodels.model.Model.to_file` method to
 serialise the model to a file.
 
@@ -20,7 +20,7 @@ new models it is necessary to use the format-specific classes.
 
 Fetching
 --------
-The :mod:`katsdmodels.fetch` sub-package provides modules for retrieving
+The :mod:`katsdpmodels.fetch` sub-package provides modules for retrieving
 models over HTTP. For code using :mod:`asyncio`, use
 :mod:`katsdpmodels.fetch.aiohttp`; for synchronous code, use
 :mod:`katsdpmodels.fetch.requests`. These depend on the
