@@ -93,8 +93,7 @@ ranges
 
     min_frequency, max_frequency (float)
         Frequencies of an RFI-affected region of the spectrum. Channels are
-        masked if the channel centre frequency falls into any of the ranges
-        (which include their endpoints).
+        masked if any part of the channel lies inside any of the ranges.
 
     max_baseline (float)
         Maximum (inclusive) baseline length for which these frequencies should

@@ -36,16 +36,21 @@ class RFIMask(models.SimpleHDF5Model):
     # Methods are not marked @abstractmethod as it causes issues with mypy:
     # https://github.com/python/mypy/issues/4717
 
-    def is_masked(self, frequency: u.Quantity, baseline_length: u.Quantity) -> Any:
+    def is_masked(self, frequency: u.Quantity, baseline_length: u.Quantity,
+                  channel_bandwidth: u.Quantity = 0 * u.Hz) -> Any:
         """Determine whether given frequency is masked for the given baseline length.
 
-        The return value is either a boolean (if frequency and baseline_length
-        are scalar) or an array of boolean if they're arrays, with the usual
-        broadcasting rules applying.
+        The return value is either a boolean (if `frequency` and
+        `baseline_length` are scalar) or an array of boolean if they're arrays,
+        with the usual broadcasting rules applying.
+
+        A channel is masked if any part of the channel overlaps with RFI. The
+        channel has width `channel_bandwidth` and is centred on `frequency`.
         """
         raise NotImplementedError()      # pragma: nocover
 
-    def max_baseline_length(self, frequency: u.Quantity):
+    def max_baseline_length(self, frequency: u.Quantity,
+                            channel_bandwidth: u.Quantity = 0 * u.Hz) -> Any:
         """Determine maximum baseline length for which data at `frequency` should be masked.
 
         If the frequency is not masked at all, returns a negative length, and
@@ -102,23 +107,27 @@ class RFIMaskRanges(RFIMask):
     def mask_auto_correlations(self) -> bool:
         return self._mask_auto_correlations
 
-    def is_masked(self, frequency: u.Quantity, baseline_length: u.Quantity) -> Any:
+    def is_masked(self, frequency: u.Quantity, baseline_length: u.Quantity,
+                  channel_width: u.Quantity = 0 * u.Hz) -> Any:
         # Add extra axis which will broadcast with the masks
-        f = frequency[..., np.newaxis]
+        low = (frequency - 0.5 * channel_width)[..., np.newaxis]
+        high = (frequency + 0.5 * channel_width)[..., np.newaxis]
         b = baseline_length[..., np.newaxis]
         in_range = (
-            (self.ranges['min_frequency'] <= f)
-            & (f <= self.ranges['max_frequency'])
+            (self.ranges['min_frequency'] <= high)
+            & (low <= self.ranges['max_frequency'])
             & (b <= self.ranges['max_baseline'])
         )
         if not self.mask_auto_correlations:
             in_range &= b > 0
         return np.any(in_range, axis=-1)
 
-    def max_baseline_length(self, frequency: u.Quantity):
-        # Add extra axis which will broadcast with the masks
-        f = frequency[..., np.newaxis]
-        in_range = (self.ranges['min_frequency'] <= f) & (f <= self.ranges['max_frequency'])
+    def max_baseline_length(self, frequency: u.Quantity,
+                            channel_width: u.Quantity = 0 * u.Hz) -> Any:
+        # Add extra axis which will broadcast with the masks, and compute channel edges
+        low = (frequency - 0.5 * channel_width)[..., np.newaxis]
+        high = (frequency + 0.5 * channel_width)[..., np.newaxis]
+        in_range = (self.ranges['min_frequency'] <= high) & (low <= self.ranges['max_frequency'])
         b = np.broadcast_to(self.ranges['max_baseline'], in_range.shape, subok=True)
         return np.max(b,
                       axis=-1, where=in_range,
