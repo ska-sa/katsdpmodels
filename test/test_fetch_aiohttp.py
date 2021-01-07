@@ -190,8 +190,6 @@ async def test_fetch_model_http_redirect(mock_aioresponses) -> None:
     # need to use an absolute URL.
     new_url = get_data_url('direct.alias')
     mock_aioresponses.get(url, headers={'Location': new_url}, status=307)
-    for match in mock_aioresponses._matches:
-        print(match.method, match.url_or_pattern)
     with await fetch_aiohttp.fetch_model(url, DummyModel) as model:
         assert len(model.ranges) == 2
 
