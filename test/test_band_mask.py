@@ -78,6 +78,15 @@ def test_is_masked_vector(ranges_model: band_mask.BandMask,
     )
 
 
+def test_is_masked_channel_width(ranges_model: band_mask.BandMask,
+                                 spectral_window: band_mask.SpectralWindow) -> None:
+    frequency = [817, 819, 821, 823, 1177, 1179, 1181] * u.MHz
+    np.testing.assert_array_equal(
+        ranges_model.is_masked(spectral_window, frequency, 2 * u.MHz),
+        [True, True, True, False, False, True, True]
+    )
+
+
 def test_bad_shape(mock_responses) -> None:
     url = get_data_url('band_mask_ranges_2d.h5')
     with pytest.raises(models.DataError,
