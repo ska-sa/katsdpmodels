@@ -124,5 +124,5 @@ fractional_ranges
         Range of the band to mask. The values are between 0.0 and 1.0, with
         0.0 indicating the lowest frequency and 1.0 the highest frequency
         (both in the digitised bandwidth). Channel i should be masked if
-        :math:`\frac{i+0.5}{nchans}` falls into any of the ranges
-        (inclusive).
+        :math:`[\frac{i}{nchans}, \frac{i+1}{nchans}]` overlaps any of the
+        ranges.

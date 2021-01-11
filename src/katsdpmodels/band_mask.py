@@ -48,7 +48,8 @@ class SpectralWindow:
 class BandMask(models.SimpleHDF5Model):
     model_type: ClassVar[Literal['band_mask']] = 'band_mask'
 
-    def is_masked(self, spectral_window: SpectralWindow, frequency: u.Quantity) -> Any:
+    def is_masked(self, spectral_window: SpectralWindow, frequency: u.Quantity,
+                  channel_width: u.Quantity = 0 * u.Hz) -> Any:
         raise NotImplementedError()      # pragma: nocover
 
     @classmethod
@@ -76,11 +77,16 @@ class BandMaskRanges(BandMask):
             dtype=(np.float64, np.float64)
         )
 
-    def is_masked(self, spectral_window: SpectralWindow, frequency: u.Quantity) -> Any:
-        fraction = (frequency - spectral_window.min_frequency) / spectral_window.bandwidth
+    def is_masked(self, spectral_window: SpectralWindow, frequency: u.Quantity,
+                  channel_width: u.Quantity = 0 * u.Hz) -> Any:
+        low_freq = frequency - 0.5 * channel_width
+        high_freq = frequency + 0.5 * channel_width
+        low_rel = (low_freq - spectral_window.min_frequency) / spectral_window.bandwidth
+        high_rel = (high_freq - spectral_window.min_frequency) / spectral_window.bandwidth
         # Add an axis that will broadcast with the ranges
-        fraction = fraction[..., np.newaxis]
-        mask = (fraction >= self.ranges['min_fraction']) & (fraction <= self.ranges['max_fraction'])
+        low_rel = low_rel[..., np.newaxis]
+        high_rel = high_rel[..., np.newaxis]
+        mask = (high_rel >= self.ranges['min_fraction']) & (low_rel <= self.ranges['max_fraction'])
         return np.any(mask, axis=-1)
 
     @classmethod
