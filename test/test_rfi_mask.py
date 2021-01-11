@@ -52,7 +52,7 @@ def test_is_masked_scalar(frequency: u.Quantity, baseline_length: u.Quantity, re
     assert ranges_model.is_masked(frequency, baseline_length) == result
 
 
-def test_is_masked_vector(ranges_model):
+def test_is_masked_vector(ranges_model: rfi_mask.RFIMaskRanges):
     frequency = u.Quantity([90, 110, 90, 110, 300, 600, 600, 600], u.MHz)
     baseline_length = u.Quantity([2, 2, 2000, 2000, 2, 2, 2000, 0], u.m)
     result = ranges_model.is_masked(frequency, baseline_length)
@@ -61,6 +61,13 @@ def test_is_masked_vector(ranges_model):
     # Test broadcasting of inputs against each other
     result = ranges_model.is_masked(frequency, 2 * u.m)
     expected = np.array([False, True, False, True, False, True, True, True])
+    np.testing.assert_array_equal(result, expected)
+
+
+def test_is_masked_channel_bandwidth(ranges_model: rfi_mask.RFIMaskRanges):
+    frequency = u.Quantity([70, 90, 110, 190, 210, 230], u.MHz)
+    result = ranges_model.is_masked(frequency, 1 * u.m, 20 * u.MHz)
+    expected = np.array([False, True, True, True, True, False])
     np.testing.assert_array_equal(result, expected)
 
 
@@ -90,6 +97,15 @@ def test_max_baseline_length_vector(ranges_model: rfi_mask.RFIMask) -> None:
     np.testing.assert_array_equal(
         result.to_value(u.m),
         [-1, 1000, -1, np.inf, -1]
+    )
+
+
+def test_max_baseline_length_channel_width(ranges_model: rfi_mask.RFIMask) -> None:
+    frequency = u.Quantity([70, 90, 110, 190, 210, 230, 470, 490], u.MHz)
+    result = ranges_model.max_baseline_length(frequency, 20 * u.MHz)
+    np.testing.assert_array_equal(
+        result.to_value(u.m),
+        [-1, 1000, 1000, 1000, 1000, -1, -1, np.inf]
     )
 
 
