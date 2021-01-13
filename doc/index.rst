@@ -6,6 +6,7 @@ Welcome to katsdpmodels's documentation!
    :caption: Contents:
 
    user/index
+   changelog
    Reference <modules>
 
 
