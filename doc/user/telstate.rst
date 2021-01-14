@@ -7,7 +7,7 @@ be retrieved later.
 
 .. _katsdptelstate: https://katsdptelstate.readthedocs.io
 
-The telescope state contains a ``sdp_model_base_url`` attribute which holds
+The telescope state contains an ``sdp_model_base_url`` attribute which holds
 a base URL for the models. All other URLs in the telescope state are relative
 to this. For each model used there are two entries in the telescope state. One
 has the suffix ``fixed`` and references the exact model that was current
@@ -49,7 +49,7 @@ situation:
    :include: example_aliases2.tex
 
 The telescope state has not been altered, but by using the
-primary_beam_model_latest key, one can access the improved model, without
+``model_primary_beam_config`` key, one can access the improved model, without
 losing track of the model that was used online.
 
 Next, suppose the receiver on m012 was swapped out for a different one. Then
@@ -80,10 +80,10 @@ In future `katdal`_ may be updated to hide these details and allow models to
 be fetched directly from a katdal data set. Until then, one can obtain the
 underlying telescope state object from a dataset as
 ``dataset.source.telstate``. Pass it to the constructor of
-:class:`katsdpmodels.fetch.aiohttp.TelescopeStateFetch` (asynchronous) or
-:class:`katsdpmodels.fetch.requests.TelescopeStateFetch` (synchronous), along
+:class:`katsdpmodels.fetch.aiohttp.TelescopeStateFetcher` (asynchronous) or
+:class:`katsdpmodels.fetch.requests.TelescopeStateFetcher` (synchronous), along
 with an (optional) underlying fetcher. Then use
-:meth:`~katsdpmodelsf.etch.requests.TelescopeStateFetch.get` to retrieve
+:meth:`~katsdpmodels.fetch.requests.TelescopeStateFetcher.get` to retrieve
 models. Instead of passing an URL (as for the underlying fetcher classes),
 pass the name of the telescope state key holding the relative URL.
 
@@ -92,17 +92,17 @@ pass the name of the telescope state key holding the relative URL.
 In some cases one may wish to look up the key within a telescope state view.
 This can be done by passing the view as a ``telstate`` keyword argument. Here
 is an example of fetching a band mask model from a view called
-``telstate_cbf`` which refers to the antenna-channelised-voltage stream:
+``telstate_cbf`` which refers to the ``antenna-channelised-voltage`` stream:
 
 .. code:: python
 
-    band_mask_model_key = telstate_cbf.join('model', 'band_mask', 'fixed')
-    try:
-        band_mask_model = await fetcher.get(band_mask_model_key,
-                                            katsdpmodels.band_mask.BandMask,
-                                            telstate=telstate_cbf)
-        return band_mask_model
-    except (aiohttp.ClientError, katsdpmodels.models.ModelError) as exc:
-        logger.warning('Failed to load band_mask model: %s', exc)
-        return None
-
+    with katsdpmodels.fetch.aiohttp.TelescopeStateFetcher(telstate) as fetcher:
+        band_mask_model_key = telstate_cbf.join('model', 'band_mask', 'fixed')
+        try:
+            band_mask_model = await fetcher.get(band_mask_model_key,
+                                                katsdpmodels.band_mask.BandMask,
+                                                telstate=telstate_cbf)
+            return band_mask_model
+        except (aiohttp.ClientError, katsdpmodels.models.ModelError) as exc:
+            logger.warning('Failed to load band_mask model: %s', exc)
+            return None

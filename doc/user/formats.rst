@@ -4,7 +4,7 @@ Model file formats
 Models are stored in HDF5 files. Where boolean or complex values are stored,
 they use the conventions set by `h5py`_. The extension should be :file:`.h5`
 (:file:`.hdf5` is also accepted by this package). When served over HTTP, the
-``Content-Type`` should be ``application/x-hdf5``. 
+``Content-Type`` should be ``application/x-hdf5``.
 
 .. _h5py: https://docs.h5py.org/en/stable/
 
@@ -15,8 +15,7 @@ have a new checksum. The filename should thus be
 :samp:`{algorithm}` is ``sha256``. The package verifies the checksum if it is
 recognised, but using a filename without a checksum is not an error.
 
-Alternatively, a model with an extension of :file:`.alias` or a
-``Content-Type``
+Alternatively, a model with an extension of :file:`.alias` or ``Content-Type``
 of ``text/plain`` is an :dfn:`alias`. It must contain a relative path to the
 actual model. Aliases can also point at other aliases, but there is an
 implementation-defined maximum redirection depth. Aliases may not change
@@ -36,16 +35,22 @@ model_type
 
 model_format
     Indicates how the model is encoded in the file, and is specific to each
-    model type. This value also serves as a major version number: if
-    backwards-incompatible changes are made, a new ``model_format`` must be used.
-    There is no minor version numbering; just add new datasets, attributes
-    etc.
+    model type. If backwards-incompatible changes are made to the format, a
+    new ``model_format`` must be used. On the other hand, an existing format
+    may be extended with new datasets, attributes, etc. while maintaining
+    backwards compatibility.
+
+model_version
+    Simple integer version of the model for a particular configuration,
+    incremented only when semantic content changes to the model occur. Thus,
+    ``model_format`` may be updated without changing this version, provided
+    that the new parameters describe the same model.
 
 model_target (optional)
-    Human-readable string describing the target of the model. Note that
-    because models may be shared (e.g., multiple receptors may have the same
-    SEFD model), this might be more general than the target the user
-    requested.
+    Human-readable string describing the applicable targets and / or
+    configurations of the model. Note that because models may be shared
+    (e.g., multiple receptors may have the same SEFD model), this might be
+    more general than the target the user requested.
 
 model_comment (optional)
     Human-readable string which may describe the provenance of the model or
@@ -54,12 +59,7 @@ model_comment (optional)
 model_created (optional)
     Timestamp at which the model was created, in RFC 3339 format.
 
-model_version:
-    Simple integer version, incremented only when semantic content changes to
-    the model occur. Thus, ``model_format`` may be updated without changing
-    this version, provided that the new parameters describe the same model.
-
-model_author (optional):
+model_author (optional)
     Name of the person who created the model. It may optionally include an
     email address in angle brackets (name-addr format in RFC 2822).
 

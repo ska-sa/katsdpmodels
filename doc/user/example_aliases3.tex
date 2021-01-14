@@ -23,11 +23,11 @@
 \draw[link] (s3-current) -- (s3-config-new);
 \draw[link] (s3-config-new) -- (s3-fixed-new2);
 \node[fit={(s3-current) (s3-config) (s3-fixed) (s3-fixed-new)
-           (s3-config-new) (s3-fixed-new2)}, draw, label={S3}] {};
+           (s3-config-new) (s3-fixed-new2)}, draw, label={Model store}] {};
 
 \node[right=of s3-config, start chain=ts going below, on chain] (ts-latest) {
-    \ldots m012.model.primary_beam.config};
-\node[on chain=ts] (ts-fixed) {\ldots m012.model.primary_beam.fixed};
+    \ldots m012_model_primary_beam_config};
+\node[on chain=ts] (ts-fixed) {\ldots m012_model_primary_beam_fixed};
 \node[fit={(ts-latest) (ts-fixed)}, draw, label=Telstate] {};
 \draw[link] (ts-latest) -- (s3-config);
 \draw[link] (ts-fixed) -- (s3-fixed);
