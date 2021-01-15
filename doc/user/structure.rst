@@ -32,7 +32,7 @@ range of targets, so are not expected to use the same naming conventions.
 RFI mask
 --------
 target
-    Empty string (i.e. a telescope-level model)
+    None
 
 config
     ``meerkat``

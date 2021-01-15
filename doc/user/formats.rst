@@ -110,10 +110,10 @@ occur after down-conversion in a heterodyne system.
 Attributes
 ^^^^^^^^^^
 model_type
-    band_mask
+    ``band_mask``
 
 model_format
-    ranges
+    ``ranges``
 
 Datasets
 ^^^^^^^^
