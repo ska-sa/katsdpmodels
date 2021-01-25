@@ -105,7 +105,7 @@ def test_max_baseline_length_channel_width(ranges_model: rfi_mask.RFIMask) -> No
     result = ranges_model.max_baseline_length(frequency, 20 * u.MHz)
     np.testing.assert_array_equal(
         result.to_value(u.m),
-        [-1, 1000, 1000, 1000, 1000, -1, -1, np.inf]
+        [0, 1000, 1000, 1000, 1000, 0, 0, np.inf]
     )
 
 
