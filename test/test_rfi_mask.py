@@ -79,11 +79,11 @@ def test_is_masked_auto_correlations(ranges_model: rfi_mask.RFIMaskRanges) -> No
 @pytest.mark.parametrize(
     'frequency,result',
     [
-        (90e6 * u.Hz, -1 * u.m),
-        (90 * u.MHz, -1 * u.m),
+        (90e6 * u.Hz, 0 * u.m),
+        (90 * u.MHz, 0 * u.m),
         (110e6 * u.Hz, 1000 * u.m),
         (110 * u.MHz, 1000 * u.m),
-        (300 * u.MHz, -1 * u.m),
+        (300 * u.MHz, 0 * u.m),
         (600 * u.MHz, np.inf * u.m)
     ])
 def test_max_baseline_length_scalar(frequency: u.Quantity, result: u.Quantity,
@@ -96,7 +96,7 @@ def test_max_baseline_length_vector(ranges_model: rfi_mask.RFIMask) -> None:
     result = ranges_model.max_baseline_length(frequency)
     np.testing.assert_array_equal(
         result.to_value(u.m),
-        [-1, 1000, -1, np.inf, -1]
+        [0, 1000, 0, np.inf, 0]
     )
 
 
@@ -111,9 +111,9 @@ def test_max_baseline_length_channel_width(ranges_model: rfi_mask.RFIMask) -> No
 
 def test_max_baseline_length_empty(ranges_model: rfi_mask.RFIMaskRanges) -> None:
     ranges_model.ranges.remove_rows(np.s_[:])
-    assert ranges_model.max_baseline_length(1 * u.Hz) == -1 * u.m
+    assert ranges_model.max_baseline_length(1 * u.Hz) == 0 * u.m
     result = ranges_model.max_baseline_length([1, 2] * u.Hz)
-    np.testing.assert_array_equal(result.to_value(u.m), [-1.0, -1.0])
+    np.testing.assert_array_equal(result.to_value(u.m), [0.0, 0.0])
 
 
 @pytest.mark.parametrize(
