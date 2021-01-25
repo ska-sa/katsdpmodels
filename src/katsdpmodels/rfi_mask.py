@@ -51,11 +51,15 @@ class RFIMask(models.SimpleHDF5Model):
 
     def max_baseline_length(self, frequency: u.Quantity,
                             channel_bandwidth: u.Quantity = 0 * u.Hz) -> Any:
-        """Determine maximum baseline length for which data at `frequency` should be masked.
+        """Maximum non-zero baseline length for which data should be masked.
 
-        If the frequency is not masked at all, returns 0.0, and if it is masked
-        at all baseline lengths, returns +inf. One may also supply an array of
-        frequencies and receive an array of responses.
+        If cross-correlations in the spectral channel with centre `frequency`
+        and width `channel_bandwidth` are not masked at all, returns 0.0,
+        and if they are masked at all baseline lengths, returns +inf. One may
+        also supply an array of frequencies and receive an array of responses.
+
+        Auto-correlations with zero baseline length are handled by
+        :meth:`mask_auto_correlations` instead.
         """
         raise NotImplementedError()      # pragma: nocover
 
