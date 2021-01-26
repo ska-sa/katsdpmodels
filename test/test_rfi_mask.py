@@ -64,7 +64,7 @@ def test_is_masked_vector(ranges_model: rfi_mask.RFIMaskRanges):
     np.testing.assert_array_equal(result, expected)
 
 
-def test_is_masked_channel_bandwidth(ranges_model: rfi_mask.RFIMaskRanges):
+def test_is_masked_channel_width(ranges_model: rfi_mask.RFIMaskRanges):
     frequency = u.Quantity([70, 90, 110, 190, 210, 230], u.MHz)
     result = ranges_model.is_masked(frequency, 1 * u.m, 20 * u.MHz)
     expected = np.array([False, True, True, True, True, False])

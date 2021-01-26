@@ -82,7 +82,7 @@ model_format
     ``ranges``
 
 mask_auto_correlations
-    A boolean to indicate whether autocorrelations (both same-hand and
+    A boolean to indicate whether auto-correlations (both same-hand and
     cross-hand) should be masked, in which case it is done for frequencies
     covered by any of the ranges.
 

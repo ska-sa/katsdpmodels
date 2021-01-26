@@ -37,7 +37,7 @@ class RFIMask(models.SimpleHDF5Model):
     # https://github.com/python/mypy/issues/4717
 
     def is_masked(self, frequency: u.Quantity, baseline_length: u.Quantity,
-                  channel_bandwidth: u.Quantity = 0 * u.Hz) -> Any:
+                  channel_width: u.Quantity = 0 * u.Hz) -> Any:
         """Determine whether given frequency is masked for the given baseline length.
 
         The return value is either a boolean (if `frequency` and
@@ -45,12 +45,12 @@ class RFIMask(models.SimpleHDF5Model):
         with the usual broadcasting rules applying.
 
         A channel is masked if any part of the channel overlaps with RFI. The
-        channel has width `channel_bandwidth` and is centred on `frequency`.
+        channel has width `channel_width` and is centred on `frequency`.
         """
         raise NotImplementedError()      # pragma: nocover
 
     def max_baseline_length(self, frequency: u.Quantity,
-                            channel_bandwidth: u.Quantity = 0 * u.Hz) -> Any:
+                            channel_width: u.Quantity = 0 * u.Hz) -> Any:
         """Determine maximum baseline length for which data at `frequency` should be masked.
 
         If the frequency is not masked at all, returns a negative length, and
