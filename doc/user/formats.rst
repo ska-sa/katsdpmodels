@@ -84,7 +84,10 @@ model_format
 mask_auto_correlations
     A boolean to indicate whether auto-correlations (both same-hand and
     cross-hand) should be masked, in which case it is done for frequencies
-    covered by any of the ranges.
+    covered by any of the ranges. That is, if this is ``False``, no
+    auto-correlations will be masked for RFI. If this is ``True``,
+    auto-correlations are considered to be very short (zero-length) baselines
+    and treated like any other baseline.
 
 Datasets
 ^^^^^^^^
@@ -97,7 +100,7 @@ ranges
 
     max_baseline (float)
         Maximum (inclusive) baseline length for which these frequencies should
-        be masked. To mask all baselines, use ∞.
+        be masked. This should be non-negative. To mask all baselines, use ∞.
 
 Band mask
 ---------
