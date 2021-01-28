@@ -72,7 +72,7 @@ class RFIMask(models.SimpleHDF5Model):
         whether auto-correlations should be masked, in which case it is done
         for frequencies covered by any of the ranges. That is, if this is
         `False`, no auto-correlations will be masked for RFI. If this is
-        `True`, auto-correlations are treated like any other baseline.
+        `True`, auto-correlations are treated like any other baselines.
         """
         raise NotImplementedError()      # pragma: nocover
 

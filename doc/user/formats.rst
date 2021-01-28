@@ -87,7 +87,7 @@ mask_auto_correlations
     covered by any of the ranges. That is, if this is ``False``, no
     auto-correlations will be masked for RFI. If this is ``True``,
     auto-correlations are considered to be very short (zero-length) baselines
-    and treated like any other baseline.
+    and treated like any other baselines.
 
 Datasets
 ^^^^^^^^
