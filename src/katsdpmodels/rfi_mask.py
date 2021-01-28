@@ -37,25 +37,29 @@ class RFIMask(models.SimpleHDF5Model):
     # https://github.com/python/mypy/issues/4717
 
     def is_masked(self, frequency: u.Quantity, baseline_length: u.Quantity,
-                  channel_bandwidth: u.Quantity = 0 * u.Hz) -> Any:
-        """Determine whether given frequency is masked for the given baseline length.
+                  channel_width: u.Quantity = 0 * u.Hz) -> Any:
+        """Determine whether given frequency is masked for given baseline length.
 
-        The return value is either a boolean (if `frequency` and
-        `baseline_length` are scalar) or an array of boolean if they're arrays,
-        with the usual broadcasting rules applying.
+        The return value is either a boolean (if `frequency`, `baseline_length`
+        and `channel_width` are scalar) or an array of boolean if they're
+        arrays, with the usual broadcasting rules applying.
 
         A channel is masked if any part of the channel overlaps with RFI. The
-        channel has width `channel_bandwidth` and is centred on `frequency`.
+        channel has width `channel_width` and is centred on `frequency`. This
+        also honours the :attr:`mask_auto_correlations` property for baseline
+        lengths of zero.
         """
         raise NotImplementedError()      # pragma: nocover
 
     def max_baseline_length(self, frequency: u.Quantity,
-                            channel_bandwidth: u.Quantity = 0 * u.Hz) -> Any:
-        """Determine maximum baseline length for which data at `frequency` should be masked.
+                            channel_width: u.Quantity = 0 * u.Hz) -> Any:
+        """Maximum baseline length for which data at `frequency` should be masked.
 
         If the frequency is not masked at all, returns a negative length, and
         if it is masked at all baseline lengths, returns +inf. One may also
-        supply an array of frequencies and receive an array of responses.
+        supply an array of frequencies and receive an array of responses. This
+        does *not* include the effect of the :attr:`mask_auto_correlations`
+        property when returning a value of zero.
         """
         raise NotImplementedError()      # pragma: nocover
 
@@ -64,7 +68,11 @@ class RFIMask(models.SimpleHDF5Model):
         """Return whether auto-correlations should be masked too.
 
         Auto-correlations are defined as baselines with zero length, which
-        includes cross-hand polarization products.
+        includes cross-hand polarisation products. This property indicates
+        whether auto-correlations should be masked, in which case it is done
+        for frequencies covered by any of the ranges. That is, if this is
+        `False`, no auto-correlations will be masked for RFI. If this is
+        `True`, auto-correlations are treated like any other baselines.
         """
         raise NotImplementedError()      # pragma: nocover
 
