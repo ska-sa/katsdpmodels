@@ -1,17 +1,10 @@
+-c https://raw.githubusercontent.com/ska-sa/katsdpdockerbase/master/docker-base-build/base-requirements.txt
+
 aiohttp
 aiohttp-retry
 astropy
-async-timeout                 # via aiohttp
-attrs                         # via aiohttp
-certifi                       # via requests
-chardet                       # via requests, aiohttp
 h5py
-idna                          # via requests
-idna-ssl                      # via aiohttp
-multidict                     # via aiohttp
 numpy
 requests
 strict-rfc3339
 typing-extensions
-urllib3                       # via requests
-yarl                          # via aiohttp
