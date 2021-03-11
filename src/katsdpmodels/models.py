@@ -374,19 +374,21 @@ def require_columns(name: str, array: Any, dtype: np.dtype, ndim: int) -> Any:
     DataError
         if the types are not compatible or the wrong number of dimensions are present.
     """
+    # The type: ignore statements below are due to https://github.com/numpy/numpy/issues/18597
     if array.ndim != ndim:
         raise DataError(f'{name} should be {ndim}-dimensional, but is {array.ndim}-dimensional')
     if array.dtype == dtype:
         return np.asanyarray(array)
     if array.dtype.names is None:
         raise DataError(f'{name} does not have named columns')
+    assert dtype.names is not None, "dtype must be a structured dtype"
     for col_name in dtype.names:
         if col_name not in array.dtype.names:
             raise DataError(f'{name} column {col_name} is missing')
-        if not np.can_cast(array.dtype[col_name], dtype[col_name], 'same_kind'):
+        if not np.can_cast(array.dtype[col_name], dtype[col_name], 'same_kind'):  # type: ignore
             raise DataError(
-                f'{name} column {col_name} has type {array.dtype[col_name]}, '
-                f'expected {dtype[col_name]}'
+                f'{name} column {col_name} has type {array.dtype[col_name]}, '    # type: ignore
+                f'expected {dtype[col_name]}'                                     # type: ignore
             )
     out = np.empty(array.shape, dtype)
     np.lib.recfunctions.assign_fields_by_name(out, array)

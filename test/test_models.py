@@ -146,7 +146,8 @@ def test_require_columns_change_byteorder() -> None:
     np.testing.assert_array_equal(array, out)
     # Some versions of numpy considered dtypes to be equal even if the byte
     # order was different, so explicitly compare byte order.
-    assert out.dtype['a'].byteorder == dtype2['a'].byteorder
+    # The type: ignore is due to https://github.com/numpy/numpy/issues/18597
+    assert out.dtype['a'].byteorder == dtype2['a'].byteorder  # type: ignore
 
 
 def test_require_columns_extra_column() -> None:
