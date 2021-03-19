@@ -28,6 +28,14 @@ katsdpmodels.models module
    :undoc-members:
    :show-inheritance:
 
+katsdpmodels.primary\_beam module
+---------------------------------
+
+.. automodule:: katsdpmodels.primary_beam
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 katsdpmodels.rfi\_mask module
 -----------------------------
 
@@ -35,7 +43,6 @@ katsdpmodels.rfi\_mask module
    :members:
    :undoc-members:
    :show-inheritance:
-
 
 Module contents
 ---------------
