@@ -17,7 +17,7 @@
 """Primary beam models."""
 
 import enum
-from typing import Sequence, Tuple, Dict, ClassVar, Union, Any
+from typing import Tuple, ClassVar, Union, Optional, Any
 from typing_extensions import Literal
 
 import numpy as np
@@ -43,11 +43,14 @@ class AltAzFrame:
 
 
 class RADecFrame:
-    """Coordinate system aligned with the celestial sphere.
+    """Coordinate system aligned with a celestial sphere.
 
     The l coordinate is aligned with right ascension and the m coordinate with
     declination, and increase in the corresponding directions. Both are defined by
     an orthographic (SIN) projection, with the nominal pointing centre at zero.
+
+    Any RA/Dec system can be used (e.g. ICRS/GCRS/CIRS) as long as the
+    parallactic angle is computed for the same system.
 
     Parameters
     ----------
@@ -63,7 +66,7 @@ class RADecFrame:
     def from_sky_coord(self, target: SkyCoord) -> 'RADecFrame':
         """Generate a frame from a target (assuming an AltAz mount).
 
-        The `target` must have ``obstime`` and ``obslocation`` properties, and
+        The `target` must have ``obstime`` and ``location`` properties, and
         must be scalar. It will be converted to ICRS if necessary.
         """
         # TODO: implement
@@ -75,28 +78,6 @@ class OutputType(enum.Enum):
     JONES_XY = 2
     MUELLER = 3
     UNPOLARIZED_POWER = 4
-
-
-class Parameter:
-    """Description of a parameter accepted by a model.
-
-    Parameters
-    ----------
-    name
-        Name of the parameter used when passing it to sampling functions
-    description
-        Human-readable description of the parameter
-    unit
-        Units that must be used for the parameter
-    required
-        Whether the parameter is required to use the model
-    """
-
-    def __init__(self, name: str, description: str, unit: str, required: bool) -> None:
-        self.name = name
-        self.description = description
-        self.unit = unit
-        self.required = required
 
 
 class PrimaryBeam(models.SimpleHDF5Model):
@@ -123,7 +104,7 @@ class PrimaryBeam(models.SimpleHDF5Model):
 
     model_type: ClassVar[Literal['primary_beam']] = 'primary_beam'
 
-    def resolution(self, frequency: u.Quantity) -> float:
+    def spatial_resolution(self, frequency: u.Quantity) -> float:
         """Approximate spatial resolution of the model, in units of projected coordinates.
 
         Sampling a grid at significantly higher resolution than this will have
@@ -169,20 +150,15 @@ class PrimaryBeam(models.SimpleHDF5Model):
         """
         raise NotImplementedError()
 
-    @property
-    def parameters(self) -> Sequence[Parameter]:
-        """Parameters of the model."""
-        raise NotImplementedError()
-
     def sample(self, l: ArrayLike, m: ArrayLike, frequency: u.Quantity,   # noqa: E741
                frame: Union[AltAzFrame, RADecFrame],
-               output_type: OutputType,
-               parameters: Dict[str, u.Quantity] = {}) -> np.ndarray:
+               output_type: OutputType, *,
+               out: Optional[np.ndarray] = None) -> np.ndarray:
         """Sample the primary.
 
         A sample is returned for each combination of a position (given by `l`,
         `m`) with a frequency. The dimensions of the output will be first those
-        of `frequency`, then those of `l` and `m` (which are broadcast with
+        of `frequency`, then those of `m` and `l` (which are broadcast with
         each other), and finally the row and column for matrices if
         `output_type` is one of the matrix types.
 
@@ -214,19 +190,20 @@ class PrimaryBeam(models.SimpleHDF5Model):
                 Power attenuation of unpolarized sources, assuming that both
                 antennas share the same beam. This is the same as the first
                 element of Mueller matrix above.
-        parameters
-            Additional parameters to the model. Parameters that are not used
-            are silently ignored.
+        out
+            If specified, provides the memory into which the result will be
+            written. It must have the correct shape the dtype must be
+            ``complex64``.
 
         Raises
         ------
-        KeyError
-            if a required parameter is missing (TODO: more specific error)?
         ValueError
             if `output_type` is :data:`OutputType.JONES_XY` and `frame` is not
             an instance of :class:`RADecFrame`.
-        astropy.units.UnitConversionError
-            if any parameter has the wrong units
+        ValueError
+            if `out` is specified and has the wrong shape.
+        TypeError
+            if `out` is specified and has the wrong dtype.
         astropy.units.UnitConversionError
             if `frequency` is not specified with a spectral unit
         """
@@ -234,8 +211,8 @@ class PrimaryBeam(models.SimpleHDF5Model):
 
     def sample_grid(self, l: ArrayLike, m: ArrayLike, frequency: u.Quantity,   # noqa: E741
                     frame: Union[AltAzFrame, RADecFrame],
-                    output_type: OutputType,
-                    parameters: Dict[str, u.Quantity] = {}) -> np.ndarray:
+                    output_type: OutputType, *,
+                    out: Optional[np.ndarray] = None) -> np.ndarray:
         """Sample the primary beam on a regular grid.
 
         This is equivalent to
