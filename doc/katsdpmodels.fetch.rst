@@ -20,7 +20,6 @@ katsdpmodels.fetch.requests module
    :undoc-members:
    :show-inheritance:
 
-
 Module contents
 ---------------
 
