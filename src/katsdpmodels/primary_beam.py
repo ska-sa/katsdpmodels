@@ -128,11 +128,11 @@ class PrimaryBeam(models.SimpleHDF5Model):
         """
         raise NotImplementedError()
 
-    def min_radius(self, frequency: u.Quantity) -> float:
+    def inradius(self, frequency: u.Quantity) -> float:
         """Maximum distance from the pointing centre at which model has full coverage."""
         raise NotImplementedError()
 
-    def max_radius(self, frequency: u.Quantity) -> float:
+    def circumradius(self, frequency: u.Quantity) -> float:
         """Maximum distance from the pointing centre at which model has any coverage."""
         raise NotImplementedError()
 
