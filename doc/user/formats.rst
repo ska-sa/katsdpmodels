@@ -130,3 +130,66 @@ fractional_ranges
         be masked if :math:`[\frac{i-0.5}{nchans}, \frac{i+0.5}{nchans}]`
         overlaps any of the ranges. Note that this means that channel 0
         is centred at 0.0 but extends below it.
+
+Primary beam
+------------
+The file contains the information in a compact Fourier-transform ("aperture
+plane") form. It comprises a 3-dimensional array J of Jones matrices. Another
+three arrays :math:`\nu`, :math:`y` and :math:`x` indicate the frequency (in
+Hz) and spatial position (in metres) of each sample along the axes.
+
+To determine the response at a sampled frequency :math:`\nu_k` and some
+direction, turn the direction into direction cosines :math:`l` and :math:`m`
+relative to the pointing centre. Then the Jones
+matrix for the response is
+
+.. math:: \frac{1}{|x|\cdot|y|}
+          \sum_{i,j} e^{-2\pi i (x_i l + y_j m)\nu_i/c} J_{k,j,i}.
+
+Note the reversed axis order in accessing :math:`J`.
+
+To sample at an intermediate frequency, use linear interpolation along the
+frequency axis in the aperture plane.
+
+See :class:`katsdpmodels.primary_beam.PrimaryBeam` and
+:class:`katsdpmodels.primary_beam.AltAzFrame` for a description of sign
+conventions. The Jones matrices correspond to :attr:`.OutputType.JONES_HV`.
+
+Attributes
+^^^^^^^^^^
+model_type
+    ``primary_beam``
+
+model_format
+    ``aperture_plane``
+
+antenna
+    The name of the antenna to which this model applies. Absent if this model
+    is not specific to a single antenna (the more generic ``model_target`` may
+    provide human-readable information about the range of applicable antennas).
+
+receiver
+    Serial number of the receiver to which this model applies. Absent if this
+    model is not specific to a single receiver.
+
+The `antenna` and `receiver` may be compared to the actual antenna
+and receiver identifiers in use to detect incorrect models (for example, if a
+receiver was swapped out but the model was not updated).
+
+Datasets
+^^^^^^^^
+x, y
+    1D arrays containing the aperture-plane coordinates of the samples. It is
+    highly recommended that the coordinates are evenly spaced.
+
+frequency
+    1D array of sampled frequencies.
+
+aperture_plane
+    5D array, with axes corresponding to (in order)
+
+    - row of Jones matrix (length 2)
+    - column of Jones matrix (length 2)
+    - frequency
+    - y
+    - x

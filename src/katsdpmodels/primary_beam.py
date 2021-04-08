@@ -100,6 +100,13 @@ class PrimaryBeam(models.SimpleHDF5Model):
     An instance of this class describes either a single antenna or an average
     of multiple antennas; to do antenna-specific modelling you will need a
     separate instance of this class per antenna.
+
+    This provides a normalized primary beam, describing the effect on off-axis
+    pointing relative to the pointing centre. Thus, at the pointing centre it
+    is the identity Jones matrix. If the primary beam Jones matrix in a given
+    direction (returned from this model) is :math:`E` and the
+    direction-independent effects such as receiver gain and leakage are
+    :math:`G`, then the combined effect is :math:`GE`.
     """
 
     model_type: ClassVar[Literal['primary_beam']] = 'primary_beam'
