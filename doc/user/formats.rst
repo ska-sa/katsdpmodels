@@ -138,22 +138,25 @@ plane") form. It comprises a 3-dimensional array J of Jones matrices. Another
 three arrays :math:`\nu`, :math:`y` and :math:`x` indicate the frequency (in
 Hz) and spatial position (in metres) of each sample along the axes.
 
-To determine the response at a sampled frequency :math:`\nu_k` and some
+To determine the response at a sampled frequency :math:`\nu_f` and some
 direction, turn the direction into direction cosines :math:`l` and :math:`m`
-relative to the pointing centre. Then the Jones
+relative to the pointing centre (as defined in
+:class:`katsdpmodels.primary_beam.AltAzFrame`). Then the Jones
 matrix for the response is
 
 .. math:: \frac{1}{|x|\cdot|y|}
-          \sum_{i,j} e^{-2\pi i (x_i l + y_j m)\nu_i/c} J_{k,j,i}.
+          \sum_{j,k} e^{-2\pi i (x_j l + y_k m)\nu_f/c} J_{f,k,j},
 
-Note the reversed axis order in accessing :math:`J`.
+where :math:`|x|`, :math:`|y|` are the number of elements in the respective
+arrays and :math:`c` is the speed of light.
+The Jones matrices correspond to :attr:`.OutputType.JONES_HV`. Note the
+reversed axis order in accessing :math:`J`.
 
 To sample at an intermediate frequency, use linear interpolation along the
 frequency axis in the aperture plane.
 
-See :class:`katsdpmodels.primary_beam.PrimaryBeam` and
-:class:`katsdpmodels.primary_beam.AltAzFrame` for a description of sign
-conventions. The Jones matrices correspond to :attr:`.OutputType.JONES_HV`.
+See :class:`katsdpmodels.primary_beam.PrimaryBeam` for other definitions and
+sign conventions.
 
 Attributes
 ^^^^^^^^^^
