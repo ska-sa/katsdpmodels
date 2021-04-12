@@ -175,16 +175,18 @@ receiver
     Serial number of the receiver to which this model applies. Absent if this
     model is not specific to a single receiver.
 
+x_start, y_start
+    Coordinates associated with the first sample along the respective axes.
+
+y_step, y_step
+    Spacing between samples along the respective axes.
+
 The `antenna` and `receiver` may be compared to the actual antenna
 and receiver identifiers in use to detect incorrect models (for example, if a
 receiver was swapped out but the model was not updated).
 
 Datasets
 ^^^^^^^^
-x, y
-    1D arrays containing the aperture-plane coordinates of the samples. It is
-    highly recommended that the coordinates are evenly spaced.
-
 frequency
     1D array of sampled frequencies.
 
