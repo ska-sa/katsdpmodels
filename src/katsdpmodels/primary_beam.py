@@ -173,6 +173,24 @@ class PrimaryBeam(models.SimpleHDF5Model):
         """
         raise NotImplementedError()
 
+    @property
+    def antenna(self) -> Optional[str]:
+        """The antenna to which this model applies.
+
+        If this model is not antenna-specific or does not carry this
+        information, it will be ``None``.
+        """
+        raise NotImplementedError()
+
+    @property
+    def receiver(self) -> Optional[str]:
+        """The receiver ID to which this model applies.
+
+        If this model is not specific to a single receiver or the model does
+        not carry this information, it will be ``None``.
+        """
+        raise NotImplementedError()
+
     def sample(self, l: ArrayLike, m: ArrayLike, frequency: u.Quantity,   # noqa: E741
                frame: Union[AltAzFrame, RADecFrame],
                output_type: OutputType, *,
@@ -238,3 +256,85 @@ class PrimaryBeam(models.SimpleHDF5Model):
 
     def to_hdf5(self, hdf5: h5py.File) -> None:
         raise NotImplementedError()      # pragma: nocover
+
+
+class PrimaryBeamAperturePlane(PrimaryBeam):
+    """Primary beam model represented in the aperture plane.
+
+    This is a Fourier transform of the primary beam response. See
+    :doc:`user/formats` for details.
+    """
+
+    model_format: ClassVar[Literal['aperture_plane']] = 'aperture_plane'
+
+    def __init__(
+            self,
+            x_start: u.Quantity, y_start: u.Quantity,
+            x_step: u.Quantity, y_step: u.Quantity,
+            frequencies: u.Quantity, samples: u.Quantity,
+            antenna: Optional[str] = None,
+            receiver: Optional[str] = None):
+        super().__init__()
+        self.x_start = x_start
+        self.y_start = y_start
+        self.x_step = x_step
+        self.y_step = y_step
+        self.frequencies = frequencies
+        self.samples = samples
+        if len(frequencies) > 1:
+            self._frequency_resolution = np.min(np.diff(frequencies))
+            if self._frequency_resolution <= 0 * u.Hz:
+                raise ValueError('Frequencies must be strictly increasing')
+        else:
+            self._frequency_resolution = 0 * u.Hz
+        self._antenna = antenna
+        self._receiver = receiver
+
+    @property
+    def x(self) -> np.ndarray:
+        """x coordinates associated with the samples."""
+        return np.arange(self.samples.shape[-1]) * self.x_step + self.x_start
+
+    @property
+    def y(self) -> np.ndarray:
+        """y coordinates associated with the samples."""
+        return np.arange(self.samples.shape[-2]) * self.y_step * self.y_start
+
+    def spatial_resolution(self, frequency: u.Quantity) -> u.Quantity:
+        # Compute the Nyquist frequency, taking the minimum between x and y
+        x = self.x
+        y = self.y
+        scale = min(max(abs(x[0]), abs(x[-1])), max(abs(y[0]), y[-1]))
+        wavelength = frequency.to(u.m, equivalencies=u.spectral(), copy=False)
+        return 0.5 * wavelength / scale
+
+    def frequency_range(self) -> Tuple[u.Quantity, u.Quantity]:
+        return self.frequencies[0], self.frequencies[-1]
+
+    def frequency_resolution(self) -> u.Quantity:
+        return self._frequency_resolution
+
+    def inradius(self, frequency: u.Quantity) -> float:
+        wavelength = frequency.to(u.m, equivalencies=u.spectral(), copy=False)
+        # Assume that the model extends to the Nyquist limit
+        return 0.5 * float(wavelength / max(self.x_step, self.y_step))
+
+    def circumradius(self, frequency: u.Quantity) -> float:
+        wavelength = frequency.to(u.m, equivalencies=u.spectral(), copy=False)
+        return 0.5 * float(np.hypot(wavelength / self.x_step, wavelength / self.y_step))
+
+    @property
+    def is_circular(self) -> bool:
+        return False
+
+    @property
+    def is_unpolarized(self) -> bool:
+        return False
+
+    @property
+    def antenna(self) -> Optional[str]:
+        return self._antenna
+
+    @property
+    def receiver(self) -> Optional[str]:
+        return self._receiver
