@@ -75,9 +75,25 @@ class RADecFrame:
 
 class OutputType(enum.Enum):
     JONES_HV = 1
+    """Jones matrix with linear basis corresponding to horizontal and vertical
+    directions. See :class:`PrimaryBeam` for sign conventions.
+    """
+
     JONES_XY = 2
+    """Jones matrix with linear basis corresponding to the IAU X (north) and Y
+    (east) directions on the celestial sphere.
+    """
+
     MUELLER = 3
+    """A 4x4 Mueller matrix describing the effect on each Stokes parameter
+    (IQUV), assuming that both antennas share the same beam.
+    """
+
     UNPOLARIZED_POWER = 4
+    """Scalar power attenuation of unpolarized sources, assuming that both
+    antennas share the same beam. This is the same as the first element of
+    :data:`MUELLER`.
+    """
 
 
 class PrimaryBeam(models.SimpleHDF5Model):
@@ -180,23 +196,7 @@ class PrimaryBeam(models.SimpleHDF5Model):
         frame
             Specifies how to interpret the coordinates.
         output_type
-            The value to compute. It must be one of
-
-            OutputType.JONES_HV
-                Jones matrix with linear basis corresponding to horizontal and
-                vertical directions (see the class documentation for sign
-                conventions).
-            OutputType.JONES_XY
-                Jones matrix with linear basis corresponding to the IAU X
-                (north) and Y (east) directions on the celestial sphere.
-            OutputType.MUELLER
-                A 4x4 Mueller matrix describing the effect on each Stokes
-                parameter (IQUV), assuming that both antennas share the same
-                beam.
-            OutputType.UNPOLARISED_POWER
-                Power attenuation of unpolarized sources, assuming that both
-                antennas share the same beam. This is the same as the first
-                element of Mueller matrix above.
+            The value to compute. See :class:`OutputType` for details.
         out
             If specified, provides the memory into which the result will be
             written. It must have the correct shape the dtype must be
