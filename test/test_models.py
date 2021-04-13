@@ -167,6 +167,19 @@ def test_require_columns_dimension_mismatch() -> None:
         models.require_columns('foo', array, dtype, 1)
 
 
+def test_require_columns_simple_mismatch() -> None:
+    with pytest.raises(models.DataError,
+                       match='foo has type float64, expected int32'):
+        models.require_columns('foo', np.zeros(3, np.float64), np.int32, 1)
+
+
+def test_require_columns_simple_castable() -> None:
+    array = np.array([1.0, 2.0, 3.0])
+    out = models.require_columns('foo', array, np.float32, 1)
+    np.testing.assert_array_equal(array, out)
+    assert out.dtype == np.dtype(np.float32)
+
+
 def assert_models_equal(model1: DummyModel, model2: DummyModel):
     assert type(model1) == type(model2)
     assert model1.model_type == model2.model_type

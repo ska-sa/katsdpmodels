@@ -195,7 +195,7 @@ specification (and this package does not do any such checks itself).
 Datasets
 ^^^^^^^^
 frequency
-    1D array of sampled frequencies.
+    1D array of sampled frequencies. It must be strictly increasing.
 
 aperture_plane
     5D array, with axes corresponding to (in order)

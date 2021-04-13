@@ -17,7 +17,7 @@
 """Primary beam models."""
 
 import enum
-from typing import Tuple, ClassVar, Union, Optional, Any
+from typing import Tuple, ClassVar, Union, Optional, Type, TypeVar, Any
 from typing_extensions import Literal
 
 import numpy as np
@@ -30,6 +30,9 @@ from astropy.coordinates import SkyCoord
 import h5py
 
 from . import models
+
+
+_P = TypeVar('_P', bound='PrimaryBeamAperturePlane')
 
 
 class AltAzFrame:
@@ -254,6 +257,15 @@ class PrimaryBeam(models.SimpleHDF5Model):
         """
         raise NotImplementedError()
 
+    @classmethod
+    def from_hdf5(cls, hdf5: h5py.File) -> 'PrimaryBeam':
+        model_format = models.get_hdf5_attr(hdf5.attrs, 'model_format', str) or ''
+        if model_format == 'aperture_plane':
+            return PrimaryBeamAperturePlane.from_hdf5(hdf5)
+        else:
+            raise models.ModelFormatError(
+                f'Unknown model_format {model_format!r} for {cls.model_type}')
+
     def to_hdf5(self, hdf5: h5py.File) -> None:
         raise NotImplementedError()      # pragma: nocover
 
@@ -275,12 +287,16 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
             antenna: Optional[str] = None,
             receiver: Optional[str] = None):
         super().__init__()
-        self.x_start = x_start
-        self.y_start = y_start
-        self.x_step = x_step
-        self.y_step = y_step
-        self.frequencies = frequencies
-        self.samples = samples
+        # Canonicalise the units to simplify to_hdf5 (and also remove the
+        # cost of conversions when methods are called with canonical units,
+        # with a side benefit of failing hard if the wrong units are
+        # provided).
+        self.x_start = x_start.to(u.m)
+        self.y_start = y_start.to(u.m)
+        self.x_step = x_step.to(u.m)
+        self.y_step = y_step.to(u.m)
+        self.frequencies = frequencies.astype(np.float32, copy=False, casting='same_kind')
+        self.samples = samples.astype(np.complex64, copy=False, casting='same_kind')
         if len(frequencies) > 1:
             self._frequency_resolution = np.min(np.diff(frequencies))
             if self._frequency_resolution <= 0 * u.Hz:
@@ -338,3 +354,22 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
     @property
     def receiver(self) -> Optional[str]:
         return self._receiver
+
+    @classmethod
+    def from_hdf5(cls: Type[_P], hdf5: h5py.File) -> _P:
+        samples = models.get_hdf5_dataset(hdf5, 'samples')
+        samples = models.require_columns('samples', samples, np.complex64, 5)
+        frequencies = models.get_hdf5_dataset(hdf5, 'frequencies')
+        frequencies = models.require_columns('frequencies', frequencies, np.float32, 1)
+        frequencies <<= u.Hz
+        if samples.shape[:2] != (2, 2):
+            raise models.DataError('samples must by 2x2 on leading dimensions')
+        if frequencies.shape[0] != samples.shape[2]:
+            raise models.DataError('samples and frequencies have inconsistent sizes')
+        x_start = models.get_hdf5_attr(hdf5, 'x_start', float, required=True) * u.m
+        y_start = models.get_hdf5_attr(hdf5, 'y_start', float, required=True) * u.m
+        x_step = models.get_hdf5_attr(hdf5, 'x_step', float, required=True) * u.m
+        y_step = models.get_hdf5_attr(hdf5, 'y_step', float, required=True) * u.m
+        return cls(x_start, y_start, x_step, y_step, frequencies, samples,
+                   antenna=models.get_hdf5_attr(hdf5, 'antenna', str),
+                   receiver=models.get_hdf5_attr(hdf5, 'receiver', str))
