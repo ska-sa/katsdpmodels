@@ -194,6 +194,13 @@ class PrimaryBeam(models.SimpleHDF5Model):
         """
         raise NotImplementedError()
 
+    @property
+    def band(self) -> Optional[str]:
+        """String identifier of the receiver band to which this model applies.
+
+        If not known, it will be ``None``.
+        """
+
     def sample(self, l: ArrayLike, m: ArrayLike, frequency: u.Quantity,   # noqa: E741
                frame: Union[AltAzFrame, RADecFrame],
                output_type: OutputType, *,
@@ -284,8 +291,10 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
             x_start: u.Quantity, y_start: u.Quantity,
             x_step: u.Quantity, y_step: u.Quantity,
             frequencies: u.Quantity, samples: u.Quantity,
+            *,
             antenna: Optional[str] = None,
-            receiver: Optional[str] = None):
+            receiver: Optional[str] = None,
+            band: Optional[str] = None):
         super().__init__()
         # Canonicalise the units to simplify to_hdf5 (and also remove the
         # cost of conversions when methods are called with canonical units,
@@ -305,6 +314,7 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
             self._frequency_resolution = 0 * u.Hz
         self._antenna = antenna
         self._receiver = receiver
+        self._band = band
 
     @property
     def x(self) -> np.ndarray:
@@ -355,6 +365,10 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
     def receiver(self) -> Optional[str]:
         return self._receiver
 
+    @property
+    def band(self) -> Optional[str]:
+        return self._band
+
     @classmethod
     def from_hdf5(cls: Type[_P], hdf5: h5py.File) -> _P:
         samples = models.get_hdf5_dataset(hdf5, 'samples')
@@ -372,4 +386,5 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         y_step = models.get_hdf5_attr(hdf5, 'y_step', float, required=True) * u.m
         return cls(x_start, y_start, x_step, y_step, frequencies, samples,
                    antenna=models.get_hdf5_attr(hdf5, 'antenna', str),
-                   receiver=models.get_hdf5_attr(hdf5, 'receiver', str))
+                   receiver=models.get_hdf5_attr(hdf5, 'receiver', str),
+                   band=models.get_hdf5_attr(hdf5, 'band', str))
