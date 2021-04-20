@@ -390,7 +390,7 @@ def require_columns(name: str, array: Any, dtype: DTypeLike, ndim: int) -> Any:
         if not np.can_cast(array.dtype, dtype, 'same_kind'):
             raise DataError(
                 f'{name} has type {array.dtype}, expected {dtype}')
-        return array.astype(dtype, copy=False)
+        return array.astype(dtype)
     if array.dtype.names is None:
         raise DataError(f'{name} does not have named columns')
     for col_name in dtype.names:
