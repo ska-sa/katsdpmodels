@@ -130,7 +130,7 @@ class PrimaryBeam(models.SimpleHDF5Model):
 
     model_type: ClassVar[Literal['primary_beam']] = 'primary_beam'
 
-    def spatial_resolution(self, frequency: u.Quantity) -> float:
+    def spatial_resolution(self, frequency: u.Quantity) -> np.ndarray:
         """Approximate spatial resolution of the model, in units of projected coordinates.
 
         Sampling a grid at significantly higher resolution than this will have
@@ -290,7 +290,7 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
             self,
             x_start: u.Quantity, y_start: u.Quantity,
             x_step: u.Quantity, y_step: u.Quantity,
-            frequencies: u.Quantity, samples: u.Quantity,
+            frequency: u.Quantity, samples: u.Quantity,
             *,
             antenna: Optional[str] = None,
             receiver: Optional[str] = None,
@@ -304,10 +304,10 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         self.y_start = y_start.to(u.m)
         self.x_step = x_step.to(u.m)
         self.y_step = y_step.to(u.m)
-        self.frequencies = frequencies.astype(np.float32, copy=False, casting='same_kind')
+        self.frequency = frequency.astype(np.float32, copy=False, casting='same_kind')
         self.samples = samples.astype(np.complex64, copy=False, casting='same_kind')
-        if len(frequencies) > 1:
-            self._frequency_resolution = np.min(np.diff(frequencies))
+        if len(frequency) > 1:
+            self._frequency_resolution = np.min(np.diff(frequency))
             if self._frequency_resolution <= 0 * u.Hz:
                 raise ValueError('Frequencies must be strictly increasing')
         else:
@@ -324,18 +324,18 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
     @property
     def y(self) -> np.ndarray:
         """y coordinates associated with the samples."""
-        return np.arange(self.samples.shape[-2]) * self.y_step * self.y_start
+        return np.arange(self.samples.shape[-2]) * self.y_step + self.y_start
 
-    def spatial_resolution(self, frequency: u.Quantity) -> u.Quantity:
-        # Compute the Nyquist frequency, taking the minimum between x and y
+    def spatial_resolution(self, frequency: u.Quantity) -> np.ndarray:
+        # Compute the Nyquist frequency, taking the maximum between x and y
         x = self.x
         y = self.y
-        scale = min(max(abs(x[0]), abs(x[-1])), max(abs(y[0]), y[-1]))
+        scale = max(max(abs(x[0]), abs(x[-1])), max(abs(y[0]), y[-1]))
         wavelength = frequency.to(u.m, equivalencies=u.spectral(), copy=False)
-        return 0.5 * wavelength / scale
+        return (0.5 * wavelength / scale).to_value(u.dimensionless_unscaled)
 
     def frequency_range(self) -> Tuple[u.Quantity, u.Quantity]:
-        return self.frequencies[0], self.frequencies[-1]
+        return self.frequency[0], self.frequency[-1]
 
     def frequency_resolution(self) -> u.Quantity:
         return self._frequency_resolution
@@ -371,20 +371,23 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
 
     @classmethod
     def from_hdf5(cls: Type[_P], hdf5: h5py.File) -> _P:
-        samples = models.get_hdf5_dataset(hdf5, 'samples')
-        samples = models.require_columns('samples', samples, np.complex64, 5)
-        frequencies = models.get_hdf5_dataset(hdf5, 'frequencies')
-        frequencies = models.require_columns('frequencies', frequencies, np.float32, 1)
-        frequencies <<= u.Hz
+        samples = models.get_hdf5_dataset(hdf5, 'aperture_plane')
+        samples = models.require_columns('aperture_plane', samples, np.complex64, 5)
+        frequency = models.get_hdf5_dataset(hdf5, 'frequency')
+        frequency = models.require_columns('frequency', frequency, np.float32, 1)
+        # Quantity doesn't play nice with h5py numpy-like's, so force loading
+        frequency = frequency[:]
+        frequency <<= u.Hz
         if samples.shape[:2] != (2, 2):
-            raise models.DataError('samples must by 2x2 on leading dimensions')
-        if frequencies.shape[0] != samples.shape[2]:
-            raise models.DataError('samples and frequencies have inconsistent sizes')
-        x_start = models.get_hdf5_attr(hdf5, 'x_start', float, required=True) * u.m
-        y_start = models.get_hdf5_attr(hdf5, 'y_start', float, required=True) * u.m
-        x_step = models.get_hdf5_attr(hdf5, 'x_step', float, required=True) * u.m
-        y_step = models.get_hdf5_attr(hdf5, 'y_step', float, required=True) * u.m
-        return cls(x_start, y_start, x_step, y_step, frequencies, samples,
-                   antenna=models.get_hdf5_attr(hdf5, 'antenna', str),
-                   receiver=models.get_hdf5_attr(hdf5, 'receiver', str),
-                   band=models.get_hdf5_attr(hdf5, 'band', str))
+            raise models.DataError('aperture_plane must by 2x2 on leading dimensions')
+        if frequency.shape[0] != samples.shape[2]:
+            raise models.DataError('aperture_plane and frequency have inconsistent sizes')
+        attrs = hdf5.attrs
+        x_start = models.get_hdf5_attr(attrs, 'x_start', float, required=True) * u.m
+        y_start = models.get_hdf5_attr(attrs, 'y_start', float, required=True) * u.m
+        x_step = models.get_hdf5_attr(attrs, 'x_step', float, required=True) * u.m
+        y_step = models.get_hdf5_attr(attrs, 'y_step', float, required=True) * u.m
+        return cls(x_start, y_start, x_step, y_step, frequency, samples,
+                   antenna=models.get_hdf5_attr(attrs, 'antenna', str),
+                   receiver=models.get_hdf5_attr(attrs, 'receiver', str),
+                   band=models.get_hdf5_attr(attrs, 'band', str))
