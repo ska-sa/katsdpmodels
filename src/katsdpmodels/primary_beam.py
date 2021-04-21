@@ -137,12 +137,12 @@ class PrimaryBeam(models.SimpleHDF5Model):
         diminishing returns compared to sampling at this resolution and
         interpolating.
         """
-        raise NotImplementedError()
+        raise NotImplementedError()      # pragma: nocover
 
     @property
     def frequency_range(self) -> Tuple[u.Quantity, u.Quantity]:
         """Minimum and maximum frequency covered by the model."""
-        raise NotImplementedError()
+        raise NotImplementedError()      # pragma: nocover
 
     @property
     def frequency_resolution(self) -> u.Quantity:
@@ -152,20 +152,20 @@ class PrimaryBeam(models.SimpleHDF5Model):
         have diminishing returns compared to sampling at this resolution and
         interpolating.
         """
-        raise NotImplementedError()
+        raise NotImplementedError()      # pragma: nocover
 
     def inradius(self, frequency: u.Quantity) -> float:
         """Maximum distance from the pointing centre at which model has full coverage."""
-        raise NotImplementedError()
+        raise NotImplementedError()      # pragma: nocover
 
     def circumradius(self, frequency: u.Quantity) -> float:
         """Maximum distance from the pointing centre at which model has any coverage."""
-        raise NotImplementedError()
+        raise NotImplementedError()      # pragma: nocover
 
     @property
     def is_circular(self) -> bool:
         """Whether this model is circularly-symmetric about the pointing centre."""
-        raise NotImplementedError()
+        raise NotImplementedError()      # pragma: nocover
 
     @property
     def is_unpolarized(self) -> bool:
@@ -174,7 +174,7 @@ class PrimaryBeam(models.SimpleHDF5Model):
         If true, it is guaranteed that the Jones matrices describing the beam are
         scaled identity matrices.
         """
-        raise NotImplementedError()
+        raise NotImplementedError()      # pragma: nocover
 
     @property
     def antenna(self) -> Optional[str]:
@@ -183,7 +183,7 @@ class PrimaryBeam(models.SimpleHDF5Model):
         If this model is not antenna-specific or does not carry this
         information, it will be ``None``.
         """
-        raise NotImplementedError()
+        raise NotImplementedError()      # pragma: nocover
 
     @property
     def receiver(self) -> Optional[str]:
@@ -192,7 +192,7 @@ class PrimaryBeam(models.SimpleHDF5Model):
         If this model is not specific to a single receiver or the model does
         not carry this information, it will be ``None``.
         """
-        raise NotImplementedError()
+        raise NotImplementedError()      # pragma: nocover
 
     @property
     def band(self) -> Optional[str]:
@@ -242,7 +242,7 @@ class PrimaryBeam(models.SimpleHDF5Model):
         astropy.units.UnitConversionError
             if `frequency` is not specified with a spectral unit
         """
-        raise NotImplementedError()
+        raise NotImplementedError()      # pragma: nocover
 
     def sample_grid(self, l: ArrayLike, m: ArrayLike, frequency: u.Quantity,   # noqa: E741
                     frame: Union[AltAzFrame, RADecFrame],
@@ -262,7 +262,7 @@ class PrimaryBeam(models.SimpleHDF5Model):
         Refer to :meth:`sample` for further details of the parameters and
         return value.
         """
-        raise NotImplementedError()
+        raise NotImplementedError()      # pragma: nocover
 
     @classmethod
     def from_hdf5(cls, hdf5: h5py.File) -> 'PrimaryBeam':
@@ -309,7 +309,7 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         if len(frequency) > 1:
             self._frequency_resolution = np.min(np.diff(frequency))
             if self._frequency_resolution <= 0 * u.Hz:
-                raise ValueError('Frequencies must be strictly increasing')
+                raise ValueError('frequencies must be strictly increasing')
         else:
             self._frequency_resolution = 0 * u.Hz
         self._antenna = antenna
@@ -379,9 +379,9 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         frequency = frequency[:]
         frequency <<= u.Hz
         if samples.shape[:2] != (2, 2):
-            raise models.DataError('aperture_plane must by 2x2 on leading dimensions')
+            raise ValueError('aperture_plane must by 2x2 on leading dimensions')
         if frequency.shape[0] != samples.shape[2]:
-            raise models.DataError('aperture_plane and frequency have inconsistent sizes')
+            raise ValueError('aperture_plane and frequency have inconsistent sizes')
         attrs = hdf5.attrs
         x_start = models.get_hdf5_attr(attrs, 'x_start', float, required=True) * u.m
         y_start = models.get_hdf5_attr(attrs, 'y_start', float, required=True) * u.m
