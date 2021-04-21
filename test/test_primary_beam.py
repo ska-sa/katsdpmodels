@@ -21,6 +21,7 @@ import pathlib
 from typing import Generator
 
 import astropy.units as u
+from astropy import constants
 import numpy as np
 import h5py
 import pytest
@@ -98,6 +99,10 @@ def test_properties(aperture_plane_model):
     assert model.antenna == 'm999'
     assert model.receiver == 'r123'
     assert model.band == 'z'
+    # These are not expected to be used by users, but sampling tests rely on
+    # them so we need to be sure they're accurate.
+    np.testing.assert_equal(model.x, (np.arange(40) * 0.5 - 10) * u.m)
+    np.testing.assert_equal(model.y, (np.arange(80) * -0.25 + 8) * u.m)
 
 
 def test_no_optional_properties(aperture_plane_model_file):
@@ -119,9 +124,9 @@ def test_single_frequency(aperture_plane_model_file):
     del h5file['aperture_plane']
     h5file.create_dataset('frequency', data=old_frequency[:1])
     h5file.create_dataset('aperture_plane', data=old_samples[:, :, :1])
-    with serve_model(h5file) as model:
-        assert model.frequency_range() == (1000 * u.MHz, 1000 * u.MHz)
-        assert model.frequency_resolution() == 0
+    with pytest.raises(models.DataError, match='at least 2 frequencies'):
+        with serve_model(h5file):
+            pass
 
 
 def test_wrong_leading_dimensions(aperture_plane_model_file):
@@ -167,3 +172,35 @@ def test_bad_model_format(aperture_plane_model_file):
                        match="Unknown model_format 'not_this' for primary_beam"):
         with serve_model(h5file):
             pass
+
+
+def test_sample_exact_scalar_freq(aperture_plane_model):
+    model = aperture_plane_model
+    n = 3
+    l = [0.0, 0.005, -0.002]
+    m = [0.0, 0.003, 0.004]
+    frequency_idx = 50
+    frequency = 1500 * u.MHz
+    assert model.frequency[frequency_idx] == frequency
+
+    actual = aperture_plane_model.sample(
+        l, m, frequency,
+        primary_beam.AltAzFrame(),
+        primary_beam.OutputType.JONES_HV)
+
+    # Use complex128 to get better precision with the accumulations and make
+    # sure that the real implementation's use of complex64 isn't an issue.
+    expected = np.zeros((n, 2, 2), np.complex128)
+    for i in range(len(l)):
+        for j in range(len(model.x)):
+            for k in range(len(model.y)):
+                s = np.exp(-2j * np.pi * (model.x[j] * l[i] + model.y[k] * m[i])
+                           * frequency / constants.c)
+                for pol in np.ndindex((2, 2)):
+                    expected[(i,) + pol] += s * model.samples[pol + (frequency_idx, k, j)]
+    expected /= len(model.x) * len(model.y)
+
+    # atol is more appropriate than rtol since there is cancellation of small terms
+    np.testing.assert_allclose(actual, expected.astype(np.complex64), rtol=0, atol=1e-6)
+    # Check that we get identity matrix at the origin
+    np.testing.assert_allclose(actual[0], np.eye(2), rtol=0, atol=1e-6)

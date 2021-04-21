@@ -25,6 +25,8 @@ try:
     from numpy.typing import ArrayLike
 except ImportError:
     ArrayLike = Any  # type: ignore
+import numba
+import scipy.interpolate
 import astropy.units as u
 from astropy.coordinates import SkyCoord
 import h5py
@@ -277,6 +279,28 @@ class PrimaryBeam(models.SimpleHDF5Model):
         raise NotImplementedError()      # pragma: nocover
 
 
+@numba.vectorize([numba.complex64(numba.float32)])
+def _expjm2pi(x):
+    """Equivalent to ``exp(-2j * np.pi * x)`` where `x` is real.
+
+    x is reduced to a small value before multiplication, which
+    improves precision at a small cost in performance.
+    """
+    y = np.float32(-2 * np.pi) * (x - np.rint(x))
+    return complex(np.cos(y), np.sin(y))
+
+
+@numba.njit
+def _outer(a, b):
+    """Equivalent to ``np.multiply.outer(a, b)``.
+
+    b must be 1D, but a can have any number of dimensions. Note that this is
+    different to ``np.outer(a, b)``, which ravels the arrays.
+    """
+    assert b.ndim == 1
+    return np.expand_dims(a, -1) * b
+
+
 class PrimaryBeamAperturePlane(PrimaryBeam):
     """Primary beam model represented in the aperture plane.
 
@@ -305,13 +329,20 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         self.x_step = x_step.to(u.m)
         self.y_step = y_step.to(u.m)
         self.frequency = frequency.astype(np.float32, copy=False, casting='same_kind')
-        self.samples = samples.astype(np.complex64, copy=False, casting='same_kind')
         if len(frequency) > 1:
             self._frequency_resolution = np.min(np.diff(frequency))
             if self._frequency_resolution <= 0 * u.Hz:
                 raise ValueError('frequencies must be strictly increasing')
         else:
-            self._frequency_resolution = 0 * u.Hz
+            # We can set _frequency_resolution easily enough, but
+            # scipy.interpolate also refuses to work with just a single (or zero)
+            # elements on the interpolation axis.
+            raise NotImplementedError('at least 2 frequencies are currently required')
+        self.samples = samples.astype(np.complex64, copy=False, casting='same_kind')
+        scale = samples.shape[-1] * samples.shape[-2]   # Normalisation factor
+        self._interp_samples = scipy.interpolate.interp1d(
+            self.frequency.to_value(u.Hz), self.samples / scale,
+            axis=2, copy=False, bounds_error=False, fill_value=np.nan)
         self._antenna = antenna
         self._receiver = receiver
         self._band = band
@@ -368,6 +399,55 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
     @property
     def band(self) -> Optional[str]:
         return self._band
+
+    @staticmethod
+    @numba.njit
+    def _sample(aperture, xf, yf, l, m, out):
+        for freq_idx in np.ndindex(xf.shape[:-1]):
+            # Frequency-specific 1D arrays
+            x = xf[freq_idx]
+            y = yf[freq_idx]
+            coeff1 = _expjm2pi(_outer(l, x))
+            coeff2 = _expjm2pi(_outer(m, y))
+            for i in range(2):
+                for j in range(2):
+                    tmp = coeff2 @ aperture[(i, j) + freq_idx]
+                    out_chunk = out[freq_idx + (...,) + (i, j)]
+                    for lm_idx in np.ndindex(l.shape):
+                        out_chunk[lm_idx] = np.dot(tmp[lm_idx], coeff1[lm_idx])
+
+    def sample(self, l: ArrayLike, m: ArrayLike, frequency: u.Quantity,   # noqa: E741
+               frame: Union[AltAzFrame, RADecFrame],
+               output_type: OutputType, *,
+               out: Optional[np.ndarray] = None) -> np.ndarray:
+        if not isinstance(frame, AltAzFrame):
+            raise NotImplementedError('Only AltAzFrame is implemented so far')
+        if output_type != OutputType.JONES_HV:
+            raise NotImplementedError('Only JONES_HV is implemented so far')
+        # TODO: replace l/m with NaNs when out of range?
+        l = np.asarray(l).astype(np.float32, copy=False, casting='same_kind')
+        m = np.asarray(m).astype(np.float32, copy=False, casting='same_kind')
+        l, m = np.broadcast_arrays(l, m)
+        out_shape = frequency.shape + l.shape + (2, 2)
+        if out is None:
+            out = np.empty(out_shape, np.complex64)
+        else:
+            if out.shape != out_shape:
+                raise ValueError(f'out must be {out_shape}, not {out.shape}')
+            if out.dtype != np.dtype(np.complex64):
+                raise TypeError('out must be complex64, not {out.dtype}')
+
+        # Compute x and y in wavelengths
+        wavenumber = frequency.to('m^-1', equivalencies=u.spectral())
+        xf = np.multiply.outer(wavenumber, self.x).to_value(u.dimensionless_unscaled)
+        yf = np.multiply.outer(wavenumber, self.y).to_value(u.dimensionless_unscaled)
+        # Ensure everything is done in float32
+        xf = xf.astype(np.float32, copy=False, casting='same_kind')
+        yf = yf.astype(np.float32, copy=False, casting='same_kind')
+        frequency_Hz = frequency.to_value(u.Hz).astype(np.float32, copy=False)
+        samples = self._interp_samples(frequency_Hz)
+        self._sample(samples, xf, yf, l, m, out)
+        return out
 
     @classmethod
     def from_hdf5(cls: Type[_P], hdf5: h5py.File) -> _P:
