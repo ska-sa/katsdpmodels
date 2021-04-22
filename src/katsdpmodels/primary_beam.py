@@ -433,9 +433,9 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
             out = np.empty(out_shape, np.complex64)
         else:
             if out.shape != out_shape:
-                raise ValueError(f'out must be {out_shape}, not {out.shape}')
+                raise ValueError(f'out must have shape {out_shape}, not {out.shape}')
             if out.dtype != np.dtype(np.complex64):
-                raise TypeError('out must be complex64, not {out.dtype}')
+                raise TypeError(f'out must have dtype complex64, not {out.dtype}')
             if not out.flags.c_contiguous:
                 raise ValueError('out must be C contiguous')
 
