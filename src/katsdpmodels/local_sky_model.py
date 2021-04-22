@@ -31,6 +31,7 @@ import h5py
 
 from . import models
 
+import math
 
 class AltAzFrame:
     """Coordinate system aligned with the antenna.
