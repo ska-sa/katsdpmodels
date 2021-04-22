@@ -415,10 +415,19 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
             raise NotImplementedError('Only AltAzFrame is implemented so far')
         if output_type != OutputType.JONES_HV:
             raise NotImplementedError('Only JONES_HV is implemented so far')
-        # TODO: replace l/m with NaNs when out of range?
+
         l_ = np.asarray(l).astype(np.float32, copy=False, casting='same_kind')
         m_ = np.asarray(m).astype(np.float32, copy=False, casting='same_kind')
+        max_l = np.max(np.abs(l_))
+        max_m = np.max(np.abs(m_))
+        wavenumber = frequency.to('m^-1', equivalencies=u.spectral())
+
         l_, m_ = np.broadcast_arrays(l_, m_)
+        # numba seems to trigger a FutureWarning when it checks the writeable
+        # flag on these broadcast arrays. Suppress it by making them
+        # explicitly readonly.
+        l_.flags.writeable = False
+        m_.flags.writeable = False
         out_shape = frequency.shape + l_.shape + (2, 2)
         if out is None:
             out = np.empty(out_shape, np.complex64)
@@ -431,7 +440,6 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
                 raise ValueError('out must be C contiguous')
 
         # Compute x and y in wavelengths
-        wavenumber = frequency.to('m^-1', equivalencies=u.spectral())
         xf = np.multiply.outer(wavenumber, self.x).to_value(u.dimensionless_unscaled)
         yf = np.multiply.outer(wavenumber, self.y).to_value(u.dimensionless_unscaled)
         # Ensure everything is done in float32
@@ -443,10 +451,24 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         # copying.
         out_view = out.view()
         out_view.shape = frequency.shape + (l_.size, 2, 2)
-        l_ = l_.ravel()
-        m_ = m_.ravel()
         samples = self._interp_samples(frequency_Hz)
-        self._sample(samples, xf, yf, l_, m_, out_view)
+        self._sample(samples, xf, yf, l_.ravel(), m_.ravel(), out_view)
+
+        # Check if there are any points that may lie outside the valid l/m
+        # region. If not (common case) we can avoid computing masks.
+        max_wavenumber = np.max(wavenumber)
+        limit_l = 0.5 / abs(self.x_step)
+        limit_m = 0.5 / abs(self.y_step)
+        if (max_l * max_wavenumber > limit_l
+                or max_m * max_wavenumber > limit_m):
+            invalid = (
+                (np.multiply.outer(wavenumber, np.abs(l_)) > limit_l)
+                | (np.multiply.outer(wavenumber, np.abs(m_)) > limit_m)
+            )
+            # Add the axes for the Jones matrix dimensions
+            invalid = invalid[..., np.newaxis, np.newaxis]
+            np.copyto(out, np.nan, where=invalid)
+
         return out
 
     @classmethod

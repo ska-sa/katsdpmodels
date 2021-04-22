@@ -197,14 +197,14 @@ def _compute_expected(model: primary_beam.PrimaryBeamAperturePlane,
                 for pol in np.ndindex((2, 2)):
                     expected[(i,) + pol] += s * samples[pol + (k, j)]
     expected /= len(model.x) * len(model.y)
-    return expected
+    return expected.astype(np.complex64)
 
 
 def test_sample_exact_scalar_freq(
         aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) -> None:
     model = aperture_plane_model
-    l = [0.0, 0.005, -0.002]
-    m = [0.0, 0.003, 0.004]
+    l = [0.0, 0.05, -0.002]
+    m = [0.0, 0.03, 0.004]
     frequency_idx = 50
     frequency = 1500 * u.MHz
     assert model.frequency[frequency_idx] == frequency
@@ -217,7 +217,7 @@ def test_sample_exact_scalar_freq(
     expected = _compute_expected(model, model.samples[frequency_idx], l, m, frequency)
 
     # atol is more appropriate than rtol since there is cancellation of small terms
-    np.testing.assert_allclose(actual, expected.astype(np.complex64), rtol=0, atol=1e-6)
+    np.testing.assert_allclose(actual, expected, rtol=0, atol=1e-6)
     # Check that we get identity matrix at the origin
     np.testing.assert_allclose(actual[0], np.eye(2), rtol=0, atol=1e-6)
 
@@ -225,8 +225,8 @@ def test_sample_exact_scalar_freq(
 def test_sample_interp_scalar_freq(
         aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) -> None:
     model = aperture_plane_model
-    l = [0.0, 0.005, -0.002]
-    m = [0.0, 0.003, 0.004]
+    l = [0.0, 0.05, -0.02]
+    m = [0.0, 0.03, 0.04]
     frequency_idx = 50
     frequency = np.mean(model.frequency[frequency_idx : frequency_idx + 2])
 
@@ -239,7 +239,7 @@ def test_sample_interp_scalar_freq(
     expected = _compute_expected(model, samples, l, m, frequency)
 
     # atol is more appropriate than rtol since there is cancellation of small terms
-    np.testing.assert_allclose(actual, expected.astype(np.complex64), rtol=0, atol=1e-6)
+    np.testing.assert_allclose(actual, expected, rtol=0, atol=1e-6)
     # Check that we get identity matrix at the origin
     np.testing.assert_allclose(actual[0], np.eye(2), rtol=0, atol=1e-6)
 
@@ -247,8 +247,8 @@ def test_sample_interp_scalar_freq(
 def test_multi_dim_lm(aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) -> None:
     rs = np.random.RandomState()
     shape = (2, 3, 4)
-    l = rs.random(shape) * 0.005
-    m = rs.random(shape) * 0.005
+    l = rs.random(shape) * 0.05
+    m = rs.random(shape) * 0.05
     frequency = 1500 * u.MHz
 
     multi = aperture_plane_model.sample(
@@ -265,8 +265,8 @@ def test_multi_dim_lm(aperture_plane_model: primary_beam.PrimaryBeamAperturePlan
 
 
 def test_scalar_lm(aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) -> None:
-    l = 0.001
-    m = 0.002
+    l = 0.01
+    m = 0.02
     frequency = 1500 * u.MHz
 
     scalar = aperture_plane_model.sample(
@@ -282,8 +282,8 @@ def test_scalar_lm(aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) 
 
 
 def test_frequency_array(aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) -> None:
-    l = np.array([0.001])
-    m = np.array([0.002])
+    l = np.array([0.01])
+    m = np.array([0.02])
     frequency = np.array([[1000, 1200], [1100, 1500]]) * u.MHz
 
     # Evaluate one frequency at a time
@@ -301,3 +301,71 @@ def test_frequency_array(aperture_plane_model: primary_beam.PrimaryBeamApertureP
         primary_beam.OutputType.JONES_HV)
 
     np.testing.assert_array_equal(actual, expected)
+
+
+def test_lm_broadcast(aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) -> None:
+    l = np.array([0.01, 0.02])
+    m = np.array([0.03, -0.04, 0.01])
+    frequency = 1500 * u.MHz
+
+    actual = aperture_plane_model.sample(
+        l[np.newaxis, :], m[:, np.newaxis], frequency,
+        primary_beam.AltAzFrame(),
+        primary_beam.OutputType.JONES_HV)
+
+    expected = np.zeros((len(m), len(l), 2, 2), np.complex64)
+    for i in range(len(m)):
+        for j in range(len(l)):
+            expected[i, j] = aperture_plane_model.sample(
+                l[j], m[i], frequency,
+                primary_beam.AltAzFrame(),
+                primary_beam.OutputType.JONES_HV)
+
+    # It isn't exact, presumably because the matrix multiplications sum
+    # in a different order depending on size.
+    np.testing.assert_allclose(actual, expected, atol=1e-7)
+
+
+@pytest.mark.parametrize(
+    'l, m, frequency',
+    [
+        (-0.3, 0.002, 1500 * u.MHz),      # l too small
+        (0.3, 0.002, 1500 * u.MHz),       # l too large
+        (0.001, -0.7, 1500 * u.MHz),      # m too small
+        (0.001, 1.0, 1500 * u.MHz),       # m too large
+        (0.001, 0.002, 900 * u.MHz),      # frequency too low
+        (0.001, 0.002, 2000 * u.MHz)      # frequency too high
+    ]
+)
+def test_out_of_range(
+        aperture_plane_model: primary_beam.PrimaryBeamAperturePlane,
+        l: float, m: float, frequency: u.Quantity) -> None:
+    actual = aperture_plane_model.sample(
+        l, m, frequency,
+        primary_beam.AltAzFrame(),
+        primary_beam.OutputType.JONES_HV)
+    expected = np.full((2, 2), np.nan)
+    np.testing.assert_array_equal(actual, expected)
+
+
+def test_partially_out_of_range(
+        aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) -> None:
+    model = aperture_plane_model
+    l = [0.1, -0.19, 0.21]     # 0.2 is (roughly) the limit at 1.5 GHz
+    m = [0.0]
+    frequency = [1000, 1500, 1630, 2000] * u.MHz
+    actual = model.sample(
+        l, m, frequency,
+        primary_beam.AltAzFrame(),
+        primary_beam.OutputType.JONES_HV)
+
+    expected_nan = np.array([
+        [False, False, False],
+        [False, False, True],
+        [False, True, True],
+        [True, True, True]     # frequency is out of range
+    ])
+
+    for i in range(2):
+        for j in range(2):
+            np.testing.assert_array_equal(np.isnan(actual[..., i, j]), expected_nan)
