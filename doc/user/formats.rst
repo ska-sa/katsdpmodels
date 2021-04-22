@@ -200,8 +200,8 @@ frequency
 aperture_plane
     5D array, with axes corresponding to (in order)
 
+    - frequency
     - row of Jones matrix (length 2)
     - column of Jones matrix (length 2)
-    - frequency
     - y
     - x

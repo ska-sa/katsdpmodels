@@ -58,12 +58,12 @@ def aperture_plane_model_file(tmp_path) -> h5py.File:
     h5file.create_dataset('frequency', data=frequency)
 
     rs = np.random.RandomState()
-    shape = (2, 2, len(frequency), 80, 40)
+    shape = (len(frequency), 2, 2, 80, 40)
     data = rs.random_sample(shape) + 1j * rs.random_sample(shape)
     # Adjust data so that beam is the identity at the centre.
     data -= np.mean(data, axis=(3, 4), keepdims=True)
-    data[0, 0] += 1
-    data[1, 1] += 1
+    data[:, 0, 0] += 1
+    data[:, 1, 1] += 1
     h5file.create_dataset('aperture_plane', data=data.astype(np.complex64))
     return h5file
 
@@ -123,7 +123,7 @@ def test_single_frequency(aperture_plane_model_file):
     del h5file['frequency']
     del h5file['aperture_plane']
     h5file.create_dataset('frequency', data=old_frequency[:1])
-    h5file.create_dataset('aperture_plane', data=old_samples[:, :, :1])
+    h5file.create_dataset('aperture_plane', data=old_samples[:1])
     with pytest.raises(models.DataError, match='at least 2 frequencies'):
         with serve_model(h5file):
             pass
@@ -132,8 +132,8 @@ def test_single_frequency(aperture_plane_model_file):
 def test_wrong_leading_dimensions(aperture_plane_model_file):
     h5file = aperture_plane_model_file
     del h5file['aperture_plane']
-    h5file.create_dataset('aperture_plane', shape=(3, 3, 64, 80, 40), dtype=np.complex64)
-    with pytest.raises(models.DataError, match='aperture_plane must by 2x2 on leading dimensions'):
+    h5file.create_dataset('aperture_plane', shape=(64, 3, 3, 80, 40), dtype=np.complex64)
+    with pytest.raises(models.DataError, match='aperture_plane must by 2x2 on Jones dimensions'):
         with serve_model(h5file):
             pass
 
@@ -197,10 +197,69 @@ def test_sample_exact_scalar_freq(aperture_plane_model):
                 s = np.exp(-2j * np.pi * (model.x[j] * l[i] + model.y[k] * m[i])
                            * frequency / constants.c)
                 for pol in np.ndindex((2, 2)):
-                    expected[(i,) + pol] += s * model.samples[pol + (frequency_idx, k, j)]
+                    expected[(i,) + pol] += s * model.samples[(frequency_idx,) + pol + (k, j)]
     expected /= len(model.x) * len(model.y)
 
     # atol is more appropriate than rtol since there is cancellation of small terms
     np.testing.assert_allclose(actual, expected.astype(np.complex64), rtol=0, atol=1e-6)
     # Check that we get identity matrix at the origin
     np.testing.assert_allclose(actual[0], np.eye(2), rtol=0, atol=1e-6)
+
+
+def test_multi_dim_lm(aperture_plane_model):
+    rs = np.random.RandomState()
+    shape = (2, 3, 4)
+    l = rs.random(shape) * 0.005
+    m = rs.random(shape) * 0.005
+    frequency = 1500 * u.MHz
+
+    multi = aperture_plane_model.sample(
+        l, m, frequency,
+        primary_beam.AltAzFrame(),
+        primary_beam.OutputType.JONES_HV)
+    flat = aperture_plane_model.sample(
+        l.ravel(), m.ravel(), frequency,
+        primary_beam.AltAzFrame(),
+        primary_beam.OutputType.JONES_HV)
+    np.testing.assert_array_equal(multi, flat.reshape(multi.shape))
+    # Make sure that we're comparing meaningful values, not just NaNs
+    assert not np.any(np.isnan(multi))
+
+
+def test_scalar_lm(aperture_plane_model):
+    l = 0.001
+    m = 0.002
+    frequency = 1500 * u.MHz
+
+    scalar = aperture_plane_model.sample(
+        l, m, frequency,
+        primary_beam.AltAzFrame(),
+        primary_beam.OutputType.JONES_HV)
+    vector = aperture_plane_model.sample(
+        np.array([l]), np.array([m]), frequency,
+        primary_beam.AltAzFrame(),
+        primary_beam.OutputType.JONES_HV)
+    assert scalar.shape == (2, 2)
+    np.testing.assert_array_equal(scalar, vector[0])
+
+
+def test_frequency_array(aperture_plane_model):
+    l = np.array([0.001])
+    m = np.array([0.002])
+    frequency = [[1000, 1200], [1100, 1500]] * u.MHz
+
+    # Evaluate one frequency at a time
+    expected = np.zeros(frequency.shape + (1, 2, 2), np.complex64)
+    # Astropy units don't work with np.ndenumerate, hence npindex instead
+    for idx in np.ndindex(frequency.shape):
+        expected[idx] = aperture_plane_model.sample(
+            l, m, frequency[idx],
+            primary_beam.AltAzFrame(),
+            primary_beam.OutputType.JONES_HV)
+    # Evaluate them all together
+    actual = aperture_plane_model.sample(
+        l, m, frequency,
+        primary_beam.AltAzFrame(),
+        primary_beam.OutputType.JONES_HV)
+
+    np.testing.assert_array_equal(actual, expected)

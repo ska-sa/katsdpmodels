@@ -229,8 +229,8 @@ class PrimaryBeam(models.SimpleHDF5Model):
             The value to compute. See :class:`OutputType` for details.
         out
             If specified, provides the memory into which the result will be
-            written. It must have the correct shape the dtype must be
-            ``complex64``.
+            written. It must have the correct shape, the dtype must be
+            ``complex64`` and it must be C contiguous.
 
         Raises
         ------
@@ -290,17 +290,6 @@ def _expjm2pi(x):
     return complex(np.cos(y), np.sin(y))
 
 
-@numba.njit
-def _outer(a, b):
-    """Equivalent to ``np.multiply.outer(a, b)``.
-
-    b must be 1D, but a can have any number of dimensions. Note that this is
-    different to ``np.outer(a, b)``, which ravels the arrays.
-    """
-    assert b.ndim == 1
-    return np.expand_dims(a, -1) * b
-
-
 class PrimaryBeamAperturePlane(PrimaryBeam):
     """Primary beam model represented in the aperture plane.
 
@@ -342,7 +331,8 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         scale = samples.shape[-1] * samples.shape[-2]   # Normalisation factor
         self._interp_samples = scipy.interpolate.interp1d(
             self.frequency.to_value(u.Hz), self.samples / scale,
-            axis=2, copy=False, bounds_error=False, fill_value=np.nan)
+            axis=0, copy=False, bounds_error=False, fill_value=np.nan,
+            assume_sorted=True)
         self._antenna = antenna
         self._receiver = receiver
         self._band = band
@@ -407,11 +397,12 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
             # Frequency-specific 1D arrays
             x = xf[freq_idx]
             y = yf[freq_idx]
-            coeff1 = _expjm2pi(_outer(l, x))
-            coeff2 = _expjm2pi(_outer(m, y))
+            ap = aperture[freq_idx]
+            coeff1 = _expjm2pi(np.outer(l, x))
+            coeff2 = _expjm2pi(np.outer(m, y))
             for i in range(2):
                 for j in range(2):
-                    tmp = coeff2 @ aperture[(i, j) + freq_idx]
+                    tmp = coeff2 @ ap[i, j]
                     out_chunk = out[freq_idx + (...,) + (i, j)]
                     for lm_idx in np.ndindex(l.shape):
                         out_chunk[lm_idx] = np.dot(tmp[lm_idx], coeff1[lm_idx])
@@ -436,6 +427,8 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
                 raise ValueError(f'out must be {out_shape}, not {out.shape}')
             if out.dtype != np.dtype(np.complex64):
                 raise TypeError('out must be complex64, not {out.dtype}')
+            if not out.flags.c_contiguous:
+                raise ValueError('out must be C contiguous')
 
         # Compute x and y in wavelengths
         wavenumber = frequency.to('m^-1', equivalencies=u.spectral())
@@ -445,8 +438,15 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         xf = xf.astype(np.float32, copy=False, casting='same_kind')
         yf = yf.astype(np.float32, copy=False, casting='same_kind')
         frequency_Hz = frequency.to_value(u.Hz).astype(np.float32, copy=False)
+        # Numba can't handle the broadcasting involved in multi-dimensional
+        # l/m, so flatten. Assign to shape instead of reshape to ensure no
+        # copying.
+        out_view = out.view()
+        out_view.shape = frequency.shape + (l.size, 2, 2)
+        l = l.ravel()
+        m = m.ravel()
         samples = self._interp_samples(frequency_Hz)
-        self._sample(samples, xf, yf, l, m, out)
+        self._sample(samples, xf, yf, l, m, out_view)
         return out
 
     @classmethod
@@ -458,9 +458,9 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         # Quantity doesn't play nice with h5py numpy-like's, so force loading
         frequency = frequency[:]
         frequency <<= u.Hz
-        if samples.shape[:2] != (2, 2):
-            raise ValueError('aperture_plane must by 2x2 on leading dimensions')
-        if frequency.shape[0] != samples.shape[2]:
+        if samples.shape[1:3] != (2, 2):
+            raise ValueError('aperture_plane must by 2x2 on Jones dimensions')
+        if frequency.shape[0] != samples.shape[0]:
             raise ValueError('aperture_plane and frequency have inconsistent sizes')
         attrs = hdf5.attrs
         x_start = models.get_hdf5_attr(attrs, 'x_start', float, required=True) * u.m
