@@ -221,6 +221,15 @@ def test_sample_exact_scalar_freq(
     # Check that we get identity matrix at the origin
     np.testing.assert_allclose(actual[0], np.eye(2), rtol=0, atol=1e-6)
 
+    # Also check that out parameters work
+    actual_out = np.zeros_like(expected)
+    assert aperture_plane_model.sample(
+        l, m, frequency,
+        primary_beam.AltAzFrame(),
+        primary_beam.OutputType.JONES_HV,
+        out=actual_out) is actual_out
+    np.testing.assert_array_equal(actual_out, actual)
+
 
 def test_sample_interp_scalar_freq(
         aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) -> None:
@@ -300,8 +309,16 @@ def test_sample_frequency_array(
         l, m, frequency,
         primary_beam.AltAzFrame(),
         primary_beam.OutputType.JONES_HV)
+    # And again with an out array to test that too
+    actual_out = np.zeros_like(expected)
+    assert aperture_plane_model.sample(
+        l, m, frequency,
+        primary_beam.AltAzFrame(),
+        primary_beam.OutputType.JONES_HV,
+        out=actual_out) is actual_out
 
     np.testing.assert_array_equal(actual, expected)
+    np.testing.assert_array_equal(actual_out, expected)
 
 
 def test_sample_lm_broadcast(aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) -> None:
@@ -370,3 +387,42 @@ def test_sample_partially_out_of_range(
     for i in range(2):
         for j in range(2):
             np.testing.assert_array_equal(np.isnan(actual[..., i, j]), expected_nan)
+
+
+@pytest.mark.parametrize(
+    'out, expectation',
+    [
+        pytest.param(
+            np.empty((2, 2, 2, 2), np.complex64),
+            pytest.raises(ValueError,
+                          match=r'out must have shape \(2, 2, 1, 2, 2\), not \(2, 2, 2, 2\)'),
+            id='shape'
+        ),
+        pytest.param(
+            np.empty((2, 2, 1, 2, 2), np.float64),
+            pytest.raises(TypeError,
+                          match=r'out must have dtype complex64, not float64'),
+            id='dtype'
+        ),
+        pytest.param(
+            np.empty((2, 2, 1, 2, 2), np.complex64, order='F'),
+            pytest.raises(ValueError,
+                          match=r'out must be C contiguous'),
+            id='contiguous'
+        )
+    ]
+)
+def test_sample_bad_out(
+        aperture_plane_model: primary_beam.PrimaryBeamAperturePlane,
+        out: np.ndarray,
+        expectation) -> None:
+    model = aperture_plane_model
+    l = np.array([0.01])
+    m = np.array([0.02])
+    frequency = np.array([[1000, 1200], [1100, 1500]]) * u.MHz
+    with expectation:
+        model.sample(
+            l, m, frequency,
+            primary_beam.AltAzFrame(),
+            primary_beam.OutputType.JONES_HV,
+            out=out)
