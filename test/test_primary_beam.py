@@ -18,11 +18,15 @@
 
 import contextlib
 import pathlib
-from typing import Generator
+from typing import Generator, Any, cast
 
 import astropy.units as u
 from astropy import constants
 import numpy as np
+try:
+    from numpy.typing import ArrayLike
+except ImportError:
+    ArrayLike = Any  # type: ignore
 import h5py
 import pytest
 
@@ -69,21 +73,22 @@ def aperture_plane_model_file(tmp_path) -> h5py.File:
 
 
 @contextlib.contextmanager
-def serve_model(model_file: h5py.File) -> Generator[primary_beam.PrimaryBeam, None, None]:
+def serve_model(model_file: h5py.File) \
+        -> Generator[primary_beam.PrimaryBeamAperturePlane, None, None]:
     path = pathlib.Path(model_file.filename)
     model_file.close()  # Ensures data is written to the file
     with fetch_requests.fetch_model(path.as_uri(), primary_beam.PrimaryBeam) as model:
-        yield model
+        yield cast(primary_beam.PrimaryBeamAperturePlane, model)
 
 
 @pytest.fixture
-def aperture_plane_model(aperture_plane_model_file) \
-        -> Generator[primary_beam.PrimaryBeam, None, None]:
+def aperture_plane_model(aperture_plane_model_file: h5py.File) \
+        -> Generator[primary_beam.PrimaryBeamAperturePlane, None, None]:
     with serve_model(aperture_plane_model_file) as model:
         yield model
 
 
-def test_properties(aperture_plane_model):
+def test_properties(aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) -> None:
     model = aperture_plane_model
     # approx because speed of light is not exactly 3e8 m/s
     assert model.spatial_resolution(1 * u.GHz) == pytest.approx(0.015, rel=1e-3)
@@ -105,7 +110,7 @@ def test_properties(aperture_plane_model):
     np.testing.assert_equal(model.y, (np.arange(80) * -0.25 + 8) * u.m)
 
 
-def test_no_optional_properties(aperture_plane_model_file):
+def test_no_optional_properties(aperture_plane_model_file: h5py.File) -> None:
     h5file = aperture_plane_model_file
     del h5file.attrs['receiver']
     del h5file.attrs['antenna']
@@ -116,7 +121,7 @@ def test_no_optional_properties(aperture_plane_model_file):
         assert model.band is None
 
 
-def test_single_frequency(aperture_plane_model_file):
+def test_single_frequency(aperture_plane_model_file: h5py.File) -> None:
     h5file = aperture_plane_model_file
     old_frequency = h5file['frequency']
     old_samples = h5file['aperture_plane']
@@ -129,7 +134,7 @@ def test_single_frequency(aperture_plane_model_file):
             pass
 
 
-def test_wrong_leading_dimensions(aperture_plane_model_file):
+def test_wrong_leading_dimensions(aperture_plane_model_file: h5py.File) -> None:
     h5file = aperture_plane_model_file
     del h5file['aperture_plane']
     h5file.create_dataset('aperture_plane', shape=(64, 3, 3, 80, 40), dtype=np.complex64)
@@ -138,7 +143,7 @@ def test_wrong_leading_dimensions(aperture_plane_model_file):
             pass
 
 
-def test_frequency_bad_size(aperture_plane_model_file):
+def test_frequency_bad_size(aperture_plane_model_file: h5py.File) -> None:
     h5file = aperture_plane_model_file
     old = h5file['frequency']
     del h5file['frequency']
@@ -149,7 +154,7 @@ def test_frequency_bad_size(aperture_plane_model_file):
             pass
 
 
-def test_frequency_bad_ordering(aperture_plane_model_file):
+def test_frequency_bad_ordering(aperture_plane_model_file: h5py.File) -> None:
     h5file = aperture_plane_model_file
     h5file['frequency'][3] = 2e9
     with pytest.raises(models.DataError, match='frequencies must be strictly increasing'):
@@ -157,7 +162,7 @@ def test_frequency_bad_ordering(aperture_plane_model_file):
             pass
 
 
-def test_missing_attr(aperture_plane_model_file):
+def test_missing_attr(aperture_plane_model_file: h5py.File) -> None:
     h5file = aperture_plane_model_file
     del h5file.attrs['x_start']
     with pytest.raises(models.DataError, match="attribute 'x_start' is missing"):
@@ -165,7 +170,7 @@ def test_missing_attr(aperture_plane_model_file):
             pass
 
 
-def test_bad_model_format(aperture_plane_model_file):
+def test_bad_model_format(aperture_plane_model_file: h5py.File) -> None:
     h5file = aperture_plane_model_file
     h5file.attrs['model_format'] = 'not_this'
     with pytest.raises(models.ModelFormatError,
@@ -174,9 +179,30 @@ def test_bad_model_format(aperture_plane_model_file):
             pass
 
 
-def test_sample_exact_scalar_freq(aperture_plane_model):
+def _compute_expected(model: primary_beam.PrimaryBeamAperturePlane,
+                      samples: ArrayLike,
+                      l: ArrayLike, m: ArrayLike,
+                      frequency: u.Quantity) -> np.ndarray:
+    l = np.asarray(l)
+    m = np.asarray(m)
+    samples = np.asarray(samples)
+    # Use complex128 to get better precision with the accumulations and make
+    # sure that the real implementation's use of complex64 isn't an issue.
+    expected = np.zeros((len(l), 2, 2), np.complex128)
+    for i in range(len(l)):
+        for j in range(len(model.x)):
+            for k in range(len(model.y)):
+                s = np.exp(-2j * np.pi * (model.x[j] * l[i] + model.y[k] * m[i])
+                           * frequency / constants.c)
+                for pol in np.ndindex((2, 2)):
+                    expected[(i,) + pol] += s * samples[pol + (k, j)]
+    expected /= len(model.x) * len(model.y)
+    return expected
+
+
+def test_sample_exact_scalar_freq(
+        aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) -> None:
     model = aperture_plane_model
-    n = 3
     l = [0.0, 0.005, -0.002]
     m = [0.0, 0.003, 0.004]
     frequency_idx = 50
@@ -188,17 +214,7 @@ def test_sample_exact_scalar_freq(aperture_plane_model):
         primary_beam.AltAzFrame(),
         primary_beam.OutputType.JONES_HV)
 
-    # Use complex128 to get better precision with the accumulations and make
-    # sure that the real implementation's use of complex64 isn't an issue.
-    expected = np.zeros((n, 2, 2), np.complex128)
-    for i in range(len(l)):
-        for j in range(len(model.x)):
-            for k in range(len(model.y)):
-                s = np.exp(-2j * np.pi * (model.x[j] * l[i] + model.y[k] * m[i])
-                           * frequency / constants.c)
-                for pol in np.ndindex((2, 2)):
-                    expected[(i,) + pol] += s * model.samples[(frequency_idx,) + pol + (k, j)]
-    expected /= len(model.x) * len(model.y)
+    expected = _compute_expected(model, model.samples[frequency_idx], l, m, frequency)
 
     # atol is more appropriate than rtol since there is cancellation of small terms
     np.testing.assert_allclose(actual, expected.astype(np.complex64), rtol=0, atol=1e-6)
@@ -206,7 +222,29 @@ def test_sample_exact_scalar_freq(aperture_plane_model):
     np.testing.assert_allclose(actual[0], np.eye(2), rtol=0, atol=1e-6)
 
 
-def test_multi_dim_lm(aperture_plane_model):
+def test_sample_interp_scalar_freq(
+        aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) -> None:
+    model = aperture_plane_model
+    l = [0.0, 0.005, -0.002]
+    m = [0.0, 0.003, 0.004]
+    frequency_idx = 50
+    frequency = np.mean(model.frequency[frequency_idx : frequency_idx + 2])
+
+    actual = aperture_plane_model.sample(
+        l, m, frequency,
+        primary_beam.AltAzFrame(),
+        primary_beam.OutputType.JONES_HV)
+
+    samples = np.mean(model.samples[frequency_idx : frequency_idx + 2], axis=0)
+    expected = _compute_expected(model, samples, l, m, frequency)
+
+    # atol is more appropriate than rtol since there is cancellation of small terms
+    np.testing.assert_allclose(actual, expected.astype(np.complex64), rtol=0, atol=1e-6)
+    # Check that we get identity matrix at the origin
+    np.testing.assert_allclose(actual[0], np.eye(2), rtol=0, atol=1e-6)
+
+
+def test_multi_dim_lm(aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) -> None:
     rs = np.random.RandomState()
     shape = (2, 3, 4)
     l = rs.random(shape) * 0.005
@@ -226,7 +264,7 @@ def test_multi_dim_lm(aperture_plane_model):
     assert not np.any(np.isnan(multi))
 
 
-def test_scalar_lm(aperture_plane_model):
+def test_scalar_lm(aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) -> None:
     l = 0.001
     m = 0.002
     frequency = 1500 * u.MHz
@@ -243,10 +281,10 @@ def test_scalar_lm(aperture_plane_model):
     np.testing.assert_array_equal(scalar, vector[0])
 
 
-def test_frequency_array(aperture_plane_model):
+def test_frequency_array(aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) -> None:
     l = np.array([0.001])
     m = np.array([0.002])
-    frequency = [[1000, 1200], [1100, 1500]] * u.MHz
+    frequency = np.array([[1000, 1200], [1100, 1500]]) * u.MHz
 
     # Evaluate one frequency at a time
     expected = np.zeros(frequency.shape + (1, 2, 2), np.complex64)

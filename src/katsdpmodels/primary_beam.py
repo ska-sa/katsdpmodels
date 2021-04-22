@@ -416,10 +416,10 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         if output_type != OutputType.JONES_HV:
             raise NotImplementedError('Only JONES_HV is implemented so far')
         # TODO: replace l/m with NaNs when out of range?
-        l = np.asarray(l).astype(np.float32, copy=False, casting='same_kind')
-        m = np.asarray(m).astype(np.float32, copy=False, casting='same_kind')
-        l, m = np.broadcast_arrays(l, m)
-        out_shape = frequency.shape + l.shape + (2, 2)
+        l_ = np.asarray(l).astype(np.float32, copy=False, casting='same_kind')
+        m_ = np.asarray(m).astype(np.float32, copy=False, casting='same_kind')
+        l_, m_ = np.broadcast_arrays(l_, m_)
+        out_shape = frequency.shape + l_.shape + (2, 2)
         if out is None:
             out = np.empty(out_shape, np.complex64)
         else:
@@ -442,11 +442,11 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         # l/m, so flatten. Assign to shape instead of reshape to ensure no
         # copying.
         out_view = out.view()
-        out_view.shape = frequency.shape + (l.size, 2, 2)
-        l = l.ravel()
-        m = m.ravel()
+        out_view.shape = frequency.shape + (l_.size, 2, 2)
+        l_ = l_.ravel()
+        m_ = m_.ravel()
         samples = self._interp_samples(frequency_Hz)
-        self._sample(samples, xf, yf, l, m, out_view)
+        self._sample(samples, xf, yf, l_, m_, out_view)
         return out
 
     @classmethod

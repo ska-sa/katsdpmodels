@@ -1,5 +1,6 @@
 [flake8]
 max-line-length = 100
+# E203 whitespace before ':'
 # E741 ambiguous variable name 'l'
 # W503 line break before binary operator
-ignore = E741, W503
+ignore = E203, E741, W503
