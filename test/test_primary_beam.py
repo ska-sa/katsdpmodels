@@ -244,7 +244,7 @@ def test_sample_interp_scalar_freq(
     np.testing.assert_allclose(actual[0], np.eye(2), rtol=0, atol=1e-6)
 
 
-def test_multi_dim_lm(aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) -> None:
+def test_sample_multi_dim_lm(aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) -> None:
     rs = np.random.RandomState()
     shape = (2, 3, 4)
     l = rs.random(shape) * 0.05
@@ -264,7 +264,7 @@ def test_multi_dim_lm(aperture_plane_model: primary_beam.PrimaryBeamAperturePlan
     assert not np.any(np.isnan(multi))
 
 
-def test_scalar_lm(aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) -> None:
+def test_sample_scalar_lm(aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) -> None:
     l = 0.01
     m = 0.02
     frequency = 1500 * u.MHz
@@ -281,7 +281,8 @@ def test_scalar_lm(aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) 
     np.testing.assert_array_equal(scalar, vector[0])
 
 
-def test_frequency_array(aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) -> None:
+def test_sample_frequency_array(
+        aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) -> None:
     l = np.array([0.01])
     m = np.array([0.02])
     frequency = np.array([[1000, 1200], [1100, 1500]]) * u.MHz
@@ -303,7 +304,7 @@ def test_frequency_array(aperture_plane_model: primary_beam.PrimaryBeamApertureP
     np.testing.assert_array_equal(actual, expected)
 
 
-def test_lm_broadcast(aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) -> None:
+def test_sample_lm_broadcast(aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) -> None:
     l = np.array([0.01, 0.02])
     m = np.array([0.03, -0.04, 0.01])
     frequency = 1500 * u.MHz
@@ -337,7 +338,7 @@ def test_lm_broadcast(aperture_plane_model: primary_beam.PrimaryBeamAperturePlan
         (0.001, 0.002, 2000 * u.MHz)      # frequency too high
     ]
 )
-def test_out_of_range(
+def test_sample_out_of_range(
         aperture_plane_model: primary_beam.PrimaryBeamAperturePlane,
         l: float, m: float, frequency: u.Quantity) -> None:
     actual = aperture_plane_model.sample(
@@ -348,7 +349,7 @@ def test_out_of_range(
     np.testing.assert_array_equal(actual, expected)
 
 
-def test_partially_out_of_range(
+def test_sample_partially_out_of_range(
         aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) -> None:
     model = aperture_plane_model
     l = [0.1, -0.19, 0.21]     # 0.2 is (roughly) the limit at 1.5 GHz
