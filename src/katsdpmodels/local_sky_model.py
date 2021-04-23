@@ -31,7 +31,7 @@ import h5py
 
 from . import models
 
-import math
+import katpoint
 
 class AltAzFrame:
     """Coordinate system aligned with the antenna.
@@ -41,7 +41,6 @@ class AltAzFrame:
     altitude. Both are defined by an orthographic (SIN) projection, with the
     nominal pointing centre at zero.
     """
-
 
 class RADecFrame:
     """Coordinate system aligned with a celestial sphere.
@@ -73,8 +72,8 @@ class RADecFrame:
         # TODO: implement
         raise NotImplementedError
 
-
-class LocalSkyModel(models.SimpleHDF5Model):
+class LocalSkyModel(models.Model):
+    """ Base class for sky models """
     model_type: ClassVar[Literal['lsm']] = 'lsm'
     # Methods are not marked @abstractmethod as it causes issues with mypy:
     # https://github.com/python/mypy/issues/4717
@@ -86,3 +85,19 @@ class LocalSkyModel(models.SimpleHDF5Model):
     def to_hdf5(self, hdf5: h5py.File) -> None:
         raise NotImplementedError()      # pragma: nocover
 
+class KatPointSkyModel(LocalSkyModel):
+    """Sky model created from a :class:`katpoint.Catalogue`."""
+    model_type: ClassVar[Literal['kpsm']] = 'kpsm'
+
+    def __init__(self, catalogue):
+        self._catalogue = catalogue
+        positions = units.Quantity(np.empty((len(catalogue), 2)),
+                                   unit=units.deg)
+        for i, source in enumerate(catalogue):
+            positions[i] = units.Quantity(source.astrometric_radec(), unit=units.rad)
+        self._positions = positions
+
+
+class TiggerSkyModel(LocalSkyModel):
+    """Sky model created from a tigger .lsm file"""
+    model_type: ClassVar[Literal['tsm']] = 'tsm'
