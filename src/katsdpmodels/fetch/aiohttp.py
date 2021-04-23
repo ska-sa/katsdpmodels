@@ -100,7 +100,7 @@ class Fetcher(fetch.FetcherBase):
                  model_cache: Optional[MutableMapping[str, models.Model]] = None) -> None:
         super().__init__(model_cache=model_cache)
         if session is None:
-            retry_options = aiohttp_retry.RetryOptions(
+            retry_options = aiohttp_retry.ExponentialRetry(
                 attempts=5,
                 exceptions={aiohttp.ClientError}
             )
@@ -134,6 +134,8 @@ class Fetcher(fetch.FetcherBase):
             # self._session is an aiohttp_retry.RetryClient it will cause it
             # to retry on all HTTP errors (including e.g. 404) instead of
             # just server errors.
+            # (this might now be fixed by
+            # https://github.com/inyutin/aiohttp_retry/pull/28)
             async with self._session.get(request.url) as resp:
                 resp.raise_for_status()
                 if request.response_type == fetch.ResponseType.TEXT:
