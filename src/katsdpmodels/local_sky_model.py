@@ -85,21 +85,3 @@ class LocalSkyModel(models.Model):
 
     def to_hdf5(self, hdf5: h5py.File) -> None:
         raise NotImplementedError()      # pragma: nocover
-
-
-class KatPointSkyModel(LocalSkyModel):
-    """Sky model created from a :class:`katpoint.Catalogue`."""
-    model_type: ClassVar[Literal['kpsm']] = 'kpsm'
-
-    def __init__(self, catalogue):
-        self._catalogue = catalogue
-        positions = units.Quantity(np.empty((len(catalogue), 2)),
-                                   unit=units.deg)
-        for i, source in enumerate(catalogue):
-            positions[i] = units.Quantity(source.astrometric_radec(), unit=units.rad)
-        self._positions = positions
-
-
-class TiggerSkyModel(LocalSkyModel):
-    """Sky model created from a tigger .lsm file"""
-    model_type: ClassVar[Literal['tsm']] = 'tsm'
