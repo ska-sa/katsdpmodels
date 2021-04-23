@@ -66,7 +66,7 @@ def aperture_plane_model_file(tmp_path) -> h5py.File:
     frequency = np.arange(64) * 1e7 + 1e9
     h5file.create_dataset('frequency', data=frequency)
 
-    rs = np.random.RandomState()
+    rs = np.random.RandomState(1)
     shape = (len(frequency), 2, 2, 80, 40)
     data = rs.random_sample(shape) + 1j * rs.random_sample(shape)
     # Adjust data so that beam is the identity at the centre.
@@ -259,7 +259,7 @@ def test_sample_interp_scalar_freq(
 
 
 def test_sample_multi_dim_lm(aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) -> None:
-    rs = np.random.RandomState()
+    rs = np.random.RandomState(1)
     shape = (2, 3, 4)
     l = rs.random(shape) * 0.05
     m = rs.random(shape) * 0.05
@@ -507,7 +507,7 @@ def test_sample_radec(
     np.testing.assert_allclose(out_radec, out_altaz, atol=1e-4)
 
 
-def test_jones_xy(aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) -> None:
+def test_samples_jones_xy(aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) -> None:
     model = aperture_plane_model
     l = [-0.002, 0.001, 0.0, 0.0, 0.0]
     m = [0.0, 0.02, 0.0, -0.03, 0.01]
@@ -522,3 +522,35 @@ def test_jones_xy(aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) -
         l, m, frequency, frame, primary_beam.OutputType.JONES_XY)
     expected_xy = frame.jones_hv_to_xy() @ out_hv
     np.testing.assert_allclose(out_xy, expected_xy, rtol=0, atol=1e-6)
+
+
+def test_sample_mueller(aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) -> None:
+    # A brightness matrix is an expectation of an outer product of the
+    # voltage vector with itself. Pick a few sample voltages to determine a
+    # brightness matrix, and cross-check by processing those individual
+    # voltages through JONES_XY.
+    model = aperture_plane_model
+    rs = np.random.RandomState(1)
+    voltages_shape = (2, 6)
+    voltages = rs.normal(size=voltages_shape) + 1j * rs.normal(size=voltages_shape)
+    l = [-0.002, 0.001, 0.0, 0.0, 0.0]
+    m = [0.0, 0.02, 0.0, -0.03, 0.01]
+    # Use at least one dimension in frequency to check that tensor products use
+    # the right axes.
+    frequency = [1.25, 1.5] * u.GHz
+    frame = primary_beam.RADecFrame(30 * u.deg)
+
+    mueller = model.sample(l, m, frequency, frame, primary_beam.OutputType.MUELLER)
+    B = voltages @ voltages.T.conj()            # Matrix of [[XX, XY], [YX, YY]]
+    B = primary_beam._XY_TO_IQUV @ B.ravel()    # Brightness in IQUV
+    actual = mueller @ B                        # Apparent IQUV
+
+    xy = model.sample(l, m, frequency, frame, primary_beam.OutputType.JONES_XY)
+    obs_voltages = xy @ voltages
+    vis = obs_voltages @ obs_voltages.swapaxes(-1, -2).conj()  # Matrix of [[XX, XY], [YX, YY]]
+    vis = vis.reshape(vis.shape[:-2] + (4,))    # Flatten to [XX, XY, YX, YY]
+    print(vis.shape)
+    # Treat vis as a stack of vectors to multiply by the matrix
+    vis = np.tensordot(vis, primary_beam._XY_TO_IQUV, axes=((-1,), (-1,)))
+
+    np.testing.assert_allclose(actual, vis, rtol=0, atol=1e-5)

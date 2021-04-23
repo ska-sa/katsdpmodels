@@ -36,6 +36,21 @@ from . import models
 
 _P = TypeVar('_P', bound='PrimaryBeamAperturePlane')
 
+# Matrix to convert Stokes parameters to XY-basis brightness vector.
+# Labeled S in eq (25) of Smirnov 2011, Revisiting the radio interferometer
+# measurement equation. I. A full-sky Jones formalism.
+_IQUV_TO_XY = np.array(
+    [
+        [1, 1, 0, 0],
+        [0, 0, 1, 1j],
+        [0, 0, 1, -1j],
+        [1, -1, 0, 0]
+    ],
+    dtype=np.complex64
+)
+# Inverse of _IQUV_TO_XY
+_XY_TO_IQUV = np.linalg.inv(_IQUV_TO_XY)
+
 
 class AltAzFrame:
     """Coordinate system aligned with the antenna.
@@ -131,13 +146,14 @@ class OutputType(enum.Enum):
 
     MUELLER = 3
     """A 4x4 Mueller matrix describing the effect on each Stokes parameter
-    (IQUV), assuming that both antennas share the same beam.
+    (IQUV), assuming that both antennas share the same beam and parallactic
+    angle.
     """
 
     UNPOLARIZED_POWER = 4
     """Scalar power attenuation of unpolarized sources, assuming that both
-    antennas share the same beam. This is the same as the first element of
-    :data:`MUELLER`.
+    antennas share the same beam and parallactic angle. This is the same as the
+    first element of :data:`MUELLER`.
     """
 
 
@@ -542,16 +558,25 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
             raise TypeError(f'frame must be RADecFrame or AltAzFrame, not {type(frame)}')
 
         jones: Optional[np.ndarray] = None
-        if output_type == OutputType.JONES_XY:
+        if output_type in {OutputType.JONES_XY, OutputType.MUELLER}:
             if not isinstance(frame, RADecFrame):
                 raise ValueError('JONES_XY required a RADecFrame')
             jones = frame.jones_hv_to_xy().astype(np.complex64)
         elif output_type != OutputType.JONES_HV:
             raise NotImplementedError('Only JONES_HV and JONES_XY are implemented so far')
 
-        out = self._sample_altaz(l_, m_, frequency, jones=jones, out=out)
-
-        return out
+        if output_type in {OutputType.JONES_XY, OutputType.JONES_HV}:
+            return self._sample_altaz(l_, m_, frequency, jones=jones, out=out)
+        elif output_type == OutputType.MUELLER:
+            xy = self._sample_altaz(l_, m_, frequency, jones=jones)
+            xyc = np.conj(xy)
+            # Take Kronecker product. Unfortunately np.kron doesn't allow
+            # operating over subsets of dimensions.
+            M = np.block([[xy[..., 0:1, 0:1] * xyc, xy[..., 0:1, 1:2] * xyc],
+                          [xy[..., 1:2, 0:1] * xyc, xy[..., 1:2, 1:2] * xyc]])
+            return np.matmul(_XY_TO_IQUV @ M, _IQUV_TO_XY, out=out)
+        else:
+            assert False, 'Unexpected output_type'
 
     @classmethod
     def from_hdf5(cls: Type[_P], hdf5: h5py.File) -> _P:
