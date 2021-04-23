@@ -32,8 +32,8 @@ from test_utils import DummyModel
 @pytest.fixture
 def dummy_model() -> DummyModel:
     ranges = np.array(
-       [(1, 4.5), (2, -5.5)],
-       dtype=[('a', 'i4'), ('b', 'f8')]
+        [(1, 4.5), (2, -5.5)],
+        dtype=[('a', 'i4'), ('b', 'f8')]
     )
     model = DummyModel(ranges)
     model.author = 'Test author'

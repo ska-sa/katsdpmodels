@@ -511,18 +511,20 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
                frame: Union[AltAzFrame, RADecFrame],
                output_type: OutputType, *,
                out: Optional[np.ndarray] = None) -> np.ndarray:
+        l_ = np.asarray(l)
+        m_ = np.asarray(m)
         if isinstance(frame, RADecFrame):
-            l, m = np.broadcast_arrays(l, m)
+            l_, m_ = np.broadcast_arrays(l_, m_)
             # Form a matrix with just two rows
-            lm = np.stack([l.ravel(), m.ravel()], axis=0)
+            lm = np.stack([l_.ravel(), m_.ravel()], axis=0)
             # Convert to AltAz frame
             lm = frame.lm_to_hv() @ lm
             # Unpack again
-            l, m = lm
+            l_, m_ = lm
         elif not isinstance(frame, AltAzFrame):
             raise TypeError(f'frame must be RADecFrame or AltAzFrame, not {type(frame)}')
 
-        out = self._sample_hv(l, m, frequency, out=out)
+        out = self._sample_hv(l_, m_, frequency, out=out)
 
         if output_type != OutputType.JONES_HV:
             raise NotImplementedError('Only JONES_HV is implemented so far')

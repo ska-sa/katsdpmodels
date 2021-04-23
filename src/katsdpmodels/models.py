@@ -285,12 +285,14 @@ class SimpleHDF5Model(Model):
 
 @overload
 def get_hdf5_attr(attrs: Mapping[str, object], name: str, required_type: Type[_T], *,
-                  required: Literal[True]) -> _T: ...
+                  required: Literal[True]) -> _T:
+    ...
 
 
 @overload
 def get_hdf5_attr(attrs: Mapping[str, object], name: str, required_type: Type[_T], *,
-                  required: bool = False) -> Optional[_T]: ...
+                  required: bool = False) -> Optional[_T]:
+    ...
 
 
 def get_hdf5_attr(attrs, name, required_type, *, required=False):
