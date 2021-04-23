@@ -22,6 +22,11 @@ from typing import Generator, Any, cast
 
 import astropy.units as u
 from astropy import constants
+from astropy.coordinates import (
+    EarthLocation, AltAz, SkyCoord,
+    CartesianRepresentation, UnitSphericalRepresentation)
+from astropy.time import Time
+from astropy.coordinates.matrix_utilities import rotation_matrix
 import numpy as np
 try:
     from numpy.typing import ArrayLike
@@ -426,3 +431,77 @@ def test_sample_bad_out(
             primary_beam.AltAzFrame(),
             primary_beam.OutputType.JONES_HV,
             out=out)
+
+
+def _skyoffset_matrix(origin: SkyCoord):
+    """Reproduce the matrix used by :class:`astropy.coordinates.SkyOffsetFrame`.
+
+    This is the matrix for transforming from a reference frame to an offset
+    frame. It does not support the rotation attribute of
+    :class:`astropy.coordinates.SkyOffsetFrame`.
+    """
+    # Based on reference_to_skyoffset in the astropy code.
+    origin_sph = origin.spherical
+    maty = rotation_matrix(-origin_sph.lat, 'y')
+    matz = rotation_matrix(origin_sph.lon, 'z')
+    return maty @ matz
+
+
+def _coords_to_lm(coords: SkyCoord, origin: SkyCoord) -> np.ndarray:
+    """Convert sky coordinates to l/m direction cosines.
+
+    The `coords` and `origin` must be in the same frame.
+
+    This would be simpler with SkyOffsetFrame, but unfortunately
+    https://github.com/astropy/astropy/issues/11277 makes it break randomly.
+    """
+    assert coords.frame.is_equivalent_frame(origin.frame)
+    mat = _skyoffset_matrix(origin)
+    offsets = coords.represent_as(CartesianRepresentation).transform(mat)
+    return offsets.xyz[1:]    # astropy spherical (0, 0) at +x, so y, z are l, m
+
+
+def _lm_to_coords(l: ArrayLike, m: ArrayLike, origin: SkyCoord) -> SkyCoord:
+    """Convert l/m cooordinates relative to an origin into coordinates.
+
+    This would be simpler with SkyOffsetFrame, but unfortunately
+    https://github.com/astropy/astropy/issues/11277 makes it break randomly.
+    """
+    l = np.asarray(l)
+    m = np.asarray(m)
+    n = np.sqrt(1 - (l * l + m * m))
+    nlm = CartesianRepresentation(np.stack([n, l, m]))
+    mat = _skyoffset_matrix(origin).T   # Transposing a rotation matrix inverts it
+    xyz = nlm.transform(mat)
+    return SkyCoord(xyz.represent_as(UnitSphericalRepresentation), frame=origin)
+
+
+@pytest.mark.parametrize('lat', [-30 * u.deg, 35 * u.deg])
+def test_sample_radec(
+        aperture_plane_model: primary_beam.PrimaryBeamAperturePlane,
+        lat: u.Quantity) -> None:
+    model = aperture_plane_model
+    location = EarthLocation.from_geodetic(18 * u.deg, lat=lat, height=100 * u.m)
+    obstime = Time('2021-04-22T13:00:00Z')
+    frequency = 1 * u.GHz
+    altaz_frame = AltAz(obstime=obstime, location=location)
+    target_altaz = SkyCoord(alt=70 * u.deg, az=150 * u.deg, frame=altaz_frame)
+
+    l_altaz = [-0.002, 0.001, 0.0, 0.0, 0.0]
+    m_altaz = [0.0, 0.02, 0.0, -0.03, 0.01]
+    coords_altaz = _lm_to_coords(l_altaz, m_altaz, target_altaz)
+
+    target_icrs = target_altaz.icrs
+    coords_icrs = coords_altaz.icrs
+    l_icrs, m_icrs = _coords_to_lm(coords_icrs, target_icrs)
+
+    out_radec = model.sample(
+        l_icrs, m_icrs, frequency,
+        primary_beam.RADecFrame.from_sky_coord(target_icrs),
+        primary_beam.OutputType.JONES_HV)
+    out_altaz = model.sample(
+        l_altaz, m_altaz, frequency,
+        primary_beam.AltAzFrame(),
+        primary_beam.OutputType.JONES_HV)
+    # Tolerance is high because RADecFrame doesn't account for aberration
+    np.testing.assert_allclose(out_radec, out_altaz, atol=1e-4)

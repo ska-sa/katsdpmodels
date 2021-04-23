@@ -57,6 +57,11 @@ class RADecFrame:
     Any RA/Dec system can be used (e.g. ICRS/GCRS/CIRS) as long as the
     parallactic angle is computed for the same system.
 
+    This currently only models parallactic angle rotation. Relativistic
+    aberration can cause a small scaling of offsets between barycentric and
+    topocentric frames, but it's ignored as it is typically much smaller than
+    features of the primary beam.
+
     Parameters
     ----------
     parallactic_angle
@@ -67,15 +72,39 @@ class RADecFrame:
     def __init__(self, parallactic_angle: u.Quantity) -> None:
         self.parallactic_angle = parallactic_angle.to(u.rad)  # Just to verify unit type
 
-    @staticmethod
-    def from_sky_coord(self, target: SkyCoord) -> 'RADecFrame':
+    def lm_to_hv(self) -> np.ndarray:
+        """Matrix that converts (ra, dec) offsets to (h, v) offsets."""
+        c = np.cos(self.parallactic_angle)
+        s = np.sin(self.parallactic_angle)
+        # Note: this is reflected rotation matrix, because RADec and AltAz
+        # have opposite handedness.
+        return np.array([[-c, s], [s, c]])
+
+    @classmethod
+    def from_sky_coord(cls, target: SkyCoord) -> 'RADecFrame':
         """Generate a frame from a target (assuming an AltAz mount).
 
         The `target` must have ``obstime`` and ``location`` properties, and
         must be scalar. It will be converted to ICRS if necessary.
         """
-        # TODO: implement
-        raise NotImplementedError
+        # Construct a point that is displaced from the pointing by a small
+        # quantity towards the nearest pole (north or south). It's necessary to
+        # use a small finite difference rather than the pole itself, because
+        # the transformation to AzEl is not rigid (does not preserve great
+        # circles).
+        target_icrs = target.icrs
+        if target_icrs.dec > 0:
+            sign = -1
+        else:
+            sign = 1
+        pole = target_icrs.directional_offset_by(0 * u.rad, sign * 1e-5 * u.rad)
+        # directional_offset_by doesn't preserve these extra attributes
+        pole.obstime = target_icrs.obstime
+        pole.location = target_icrs.location
+        pa = target.altaz.position_angle(pole.altaz)
+        if sign == -1:
+            pa += np.pi * u.rad
+        return cls(pa)
 
 
 class OutputType(enum.Enum):
@@ -392,7 +421,20 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
 
     @staticmethod
     @numba.njit
-    def _sample(aperture, xf, yf, l, m, out):
+    def _sample_impl(aperture, xf, yf, l, m, out):
+        """Numba implementation of :meth:`_sample_hv`.
+
+        Parameters
+        ----------
+        aperture
+            Aperture-plane samples, already interpolated onto the desired frequencies
+        xf, yf
+            x and y in wavelength, with the frequency axes first.
+        l, m
+            1D l and m coordinates (already broadcast with each other)
+        out
+            Output array
+        """
         for freq_idx in np.ndindex(xf.shape[:-1]):
             # Frequency-specific 1D arrays
             x = xf[freq_idx]
@@ -407,15 +449,9 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
                     for lm_idx in np.ndindex(l.shape):
                         out_chunk[lm_idx] = np.dot(tmp[lm_idx], coeff1[lm_idx])
 
-    def sample(self, l: ArrayLike, m: ArrayLike, frequency: u.Quantity,   # noqa: E741
-               frame: Union[AltAzFrame, RADecFrame],
-               output_type: OutputType, *,
-               out: Optional[np.ndarray] = None) -> np.ndarray:
-        if not isinstance(frame, AltAzFrame):
-            raise NotImplementedError('Only AltAzFrame is implemented so far')
-        if output_type != OutputType.JONES_HV:
-            raise NotImplementedError('Only JONES_HV is implemented so far')
-
+    def _sample_hv(self, l: ArrayLike, m: ArrayLike, frequency: u.Quantity,
+                   out: Optional[np.ndarray] = None) -> np.ndarray:
+        """Implementation of :meth:`sample` for AltAzFrame and JONES_HV."""
         l_ = np.asarray(l).astype(np.float32, copy=False, casting='same_kind')
         m_ = np.asarray(m).astype(np.float32, copy=False, casting='same_kind')
         max_l = np.max(np.abs(l_))
@@ -452,7 +488,7 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         out_view = out.view()
         out_view.shape = frequency.shape + (l_.size, 2, 2)
         samples = self._interp_samples(frequency_Hz)
-        self._sample(samples, xf, yf, l_.ravel(), m_.ravel(), out_view)
+        self._sample_impl(samples, xf, yf, l_.ravel(), m_.ravel(), out_view)
 
         # Check if there are any points that may lie outside the valid l/m
         # region. If not (common case) we can avoid computing masks.
@@ -468,6 +504,28 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
             # Add the axes for the Jones matrix dimensions
             invalid = invalid[..., np.newaxis, np.newaxis]
             np.copyto(out, np.nan, where=invalid)
+
+        return out
+
+    def sample(self, l: ArrayLike, m: ArrayLike, frequency: u.Quantity,   # noqa: E741
+               frame: Union[AltAzFrame, RADecFrame],
+               output_type: OutputType, *,
+               out: Optional[np.ndarray] = None) -> np.ndarray:
+        if isinstance(frame, RADecFrame):
+            l, m = np.broadcast_arrays(l, m)
+            # Form a matrix with just two rows
+            lm = np.stack([l.ravel(), m.ravel()], axis=0)
+            # Convert to AltAz frame
+            lm = frame.lm_to_hv() @ lm
+            # Unpack again
+            l, m = lm
+        elif not isinstance(frame, AltAzFrame):
+            raise TypeError(f'frame must be RADecFrame or AltAzFrame, not {type(frame)}')
+
+        out = self._sample_hv(l, m, frequency, out=out)
+
+        if output_type != OutputType.JONES_HV:
+            raise NotImplementedError('Only JONES_HV is implemented so far')
 
         return out
 
