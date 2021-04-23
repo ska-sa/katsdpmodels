@@ -19,7 +19,6 @@
 from typing import ClassVar, Any
 from typing_extensions import Literal
 
-import numpy as np
 try:
     from numpy.typing import ArrayLike
 except ImportError:
