@@ -80,6 +80,17 @@ class RADecFrame:
         # have opposite handedness.
         return np.array([[-c, s], [s, c]])
 
+    def jones_hv_to_xy(self) -> np.ndarray:
+        """Jones matrix that converts voltages from HV to XY.
+
+        See :class:`OutputType` for further clarification.
+        """
+        c = np.cos(self.parallactic_angle)
+        s = np.sin(self.parallactic_angle)
+        # No handedness change, but H aligns with X and V with Y at a
+        # PA of 90°.
+        return np.array([[s, c], [-c, s]])
+
     @classmethod
     def from_sky_coord(cls, target: SkyCoord) -> 'RADecFrame':
         """Generate a frame from a target (assuming an AltAz mount).
@@ -422,7 +433,7 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
     @staticmethod
     @numba.njit
     def _sample_impl(aperture, xf, yf, l, m, out):
-        """Numba implementation of :meth:`_sample_hv`.
+        """Numba implementation of :meth:`_sample_altaz`.
 
         Parameters
         ----------
@@ -449,9 +460,11 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
                     for lm_idx in np.ndindex(l.shape):
                         out_chunk[lm_idx] = np.dot(tmp[lm_idx], coeff1[lm_idx])
 
-    def _sample_hv(self, l: ArrayLike, m: ArrayLike, frequency: u.Quantity,
-                   out: Optional[np.ndarray] = None) -> np.ndarray:
-        """Implementation of :meth:`sample` for AltAzFrame and JONES_HV."""
+    def _sample_altaz(
+            self, l: ArrayLike, m: ArrayLike, frequency: u.Quantity,
+            jones: Optional[np.ndarray] = None,
+            out: Optional[np.ndarray] = None) -> np.ndarray:
+        """Implementation of :meth:`sample` for AltAzFrame."""
         l_ = np.asarray(l).astype(np.float32, copy=False, casting='same_kind')
         m_ = np.asarray(m).astype(np.float32, copy=False, casting='same_kind')
         max_l = np.max(np.abs(l_))
@@ -488,6 +501,10 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         out_view = out.view()
         out_view.shape = frequency.shape + (l_.size, 2, 2)
         samples = self._interp_samples(frequency_Hz)
+        if jones is not None:
+            # Matrix multiply, but tensordot/matmul would require shuffling
+            # the axes around.
+            samples = np.einsum('ij,...jkxy->...ikxy', jones, samples)
         self._sample_impl(samples, xf, yf, l_.ravel(), m_.ravel(), out_view)
 
         # Check if there are any points that may lie outside the valid l/m
@@ -524,10 +541,15 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         elif not isinstance(frame, AltAzFrame):
             raise TypeError(f'frame must be RADecFrame or AltAzFrame, not {type(frame)}')
 
-        out = self._sample_hv(l_, m_, frequency, out=out)
-
-        if output_type != OutputType.JONES_HV:
+        jones: Optional[np.ndarray] = None
+        if output_type == OutputType.JONES_XY:
+            if not isinstance(frame, RADecFrame):
+                raise ValueError('JONES_XY required a RADecFrame')
+            jones = frame.jones_hv_to_xy().astype(np.complex64)
+        elif output_type != OutputType.JONES_HV:
             raise NotImplementedError('Only JONES_HV is implemented so far')
+
+        out = self._sample_altaz(l_, m_, frequency, jones=jones, out=out)
 
         return out
 

@@ -505,3 +505,20 @@ def test_sample_radec(
         primary_beam.OutputType.JONES_HV)
     # Tolerance is high because RADecFrame doesn't account for aberration
     np.testing.assert_allclose(out_radec, out_altaz, atol=1e-4)
+
+
+def test_jones_xy(aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) -> None:
+    model = aperture_plane_model
+    l = [-0.002, 0.001, 0.0, 0.0, 0.0]
+    m = [0.0, 0.02, 0.0, -0.03, 0.01]
+    # Use at least one dimension in frequency to check that tensor products use
+    # the right axes.
+    frequency = [1.25, 1.5] * u.GHz
+    frame = primary_beam.RADecFrame(30 * u.deg)
+
+    out_hv = model.sample(
+        l, m, frequency, frame, primary_beam.OutputType.JONES_HV)
+    out_xy = model.sample(
+        l, m, frequency, frame, primary_beam.OutputType.JONES_XY)
+    expected_xy = frame.jones_hv_to_xy() @ out_hv
+    np.testing.assert_allclose(out_xy, expected_xy, rtol=0, atol=1e-6)
