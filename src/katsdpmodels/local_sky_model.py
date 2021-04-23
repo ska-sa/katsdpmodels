@@ -16,8 +16,7 @@
 
 """Local Sky Model"""
 
-import enum
-from typing import Tuple, ClassVar, Union, Optional, Any
+from typing import ClassVar, Any
 from typing_extensions import Literal
 
 import numpy as np
@@ -31,7 +30,6 @@ import h5py
 
 from . import models
 
-import katpoint
 
 class AltAzFrame:
     """Coordinate system aligned with the antenna.
@@ -41,6 +39,8 @@ class AltAzFrame:
     altitude. Both are defined by an orthographic (SIN) projection, with the
     nominal pointing centre at zero.
     """
+    pass
+
 
 class RADecFrame:
     """Coordinate system aligned with a celestial sphere.
@@ -72,6 +72,7 @@ class RADecFrame:
         # TODO: implement
         raise NotImplementedError
 
+
 class LocalSkyModel(models.Model):
     """ Base class for sky models """
     model_type: ClassVar[Literal['lsm']] = 'lsm'
@@ -84,6 +85,7 @@ class LocalSkyModel(models.Model):
 
     def to_hdf5(self, hdf5: h5py.File) -> None:
         raise NotImplementedError()      # pragma: nocover
+
 
 class KatPointSkyModel(LocalSkyModel):
     """Sky model created from a :class:`katpoint.Catalogue`."""
