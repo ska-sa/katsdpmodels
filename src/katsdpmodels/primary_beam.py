@@ -547,7 +547,7 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
                 raise ValueError('JONES_XY required a RADecFrame')
             jones = frame.jones_hv_to_xy().astype(np.complex64)
         elif output_type != OutputType.JONES_HV:
-            raise NotImplementedError('Only JONES_HV is implemented so far')
+            raise NotImplementedError('Only JONES_HV and JONES_XY are implemented so far')
 
         out = self._sample_altaz(l_, m_, frequency, jones=jones, out=out)
 
