@@ -358,16 +358,17 @@ def _asarray(x: ArrayLike, dtype: Optional[DTypeLike] = None) -> np.ndarray:
     When a dtype is specified, uses ``same_kind`` casting.
     """
     if isinstance(x, u.Quantity):
-        x = x.to_value(u.dimensionless_unscaled)
+        array = x.to_value(u.dimensionless_unscaled)
     else:
-        x = np.asarray(x)
+        array = np.asarray(x)
     if dtype is not None:
-        x = x.astype(dtype, copy=False, casting='same_kind')
-    return x
+        array = array.astype(dtype, copy=False, casting='same_kind')
+    return array
 
 
 def _check_out(out: Optional[np.ndarray], output_type: OutputType) -> None:
     if out is not None:
+        expected_dtype: np.dtype
         if output_type != OutputType.UNPOLARIZED_POWER:
             expected_dtype = np.dtype(np.complex64)
         else:
@@ -426,12 +427,12 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         self._band = band
 
     @property
-    def x(self) -> np.ndarray:
+    def x(self) -> u.Quantity:
         """x coordinates associated with the samples."""
         return np.arange(self.samples.shape[-1]) * self.x_step + self.x_start
 
     @property
-    def y(self) -> np.ndarray:
+    def y(self) -> u.Quantity:
         """y coordinates associated with the samples."""
         return np.arange(self.samples.shape[-2]) * self.y_step + self.y_start
 
