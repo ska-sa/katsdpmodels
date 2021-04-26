@@ -571,9 +571,6 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         assert l.shape == m.shape
         assert l.dtype == np.float32
         assert m.dtype == np.float32
-        max_l = np.max(np.abs(l))
-        max_m = np.max(np.abs(m))
-        wavenumber = frequency.to('m^-1', equivalencies=u.spectral())
 
         out_shape = frequency.shape + l.shape + (2, 2)
         if out is None:
@@ -582,6 +579,7 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
             raise ValueError(f'out must have shape {out_shape}, not {out.shape}')
 
         # Compute x and y in wavelengths
+        wavenumber = frequency.to('m^-1', equivalencies=u.spectral())
         xf = _asarray(np.multiply.outer(wavenumber, self.x), np.float32)
         yf = _asarray(np.multiply.outer(wavenumber, self.y), np.float32)
         # Numba can't handle the broadcasting involved in multi-dimensional
@@ -594,6 +592,8 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
 
         # Check if there are any points that may lie outside the valid l/m
         # region. If not (common case) we can avoid computing masks.
+        max_l = np.max(np.abs(l))
+        max_m = np.max(np.abs(m))
         max_wavenumber = np.max(wavenumber)
         limit_l = 0.5 / abs(self.x_step)
         limit_m = 0.5 / abs(self.y_step)
@@ -672,18 +672,34 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         assert m.dtype == np.dtype(np.float32)
         x_m = _asarray(self.x.to_value(u.m), np.float32)
         y_m = _asarray(self.y.to_value(u.m), np.float32)
-        wavenumber = _asarray(
-            frequency.to_value('m^-1', equivalencies=u.spectral()),
-            np.float32)
+        wavenumber = frequency.to('m^-1', equivalencies=u.spectral())
+        wavenumber_m = _asarray(wavenumber.value, np.float32)
         samples = self._prepare_samples(frequency, AltAzFrame(), OutputType.JONES_HV)
         out_shape = frequency.shape + m.shape + l.shape + (2, 2)
         if out is None:
             out = np.empty(out_shape, np.complex64)
         elif out.shape != out_shape:
             raise ValueError(f'out must have shape {out_shape}, not {out.shape}')
-        self._sample_grid_impl(x_m, y_m, l, m, wavenumber, samples, out)
+        self._sample_grid_impl(x_m, y_m, l, m, wavenumber_m, samples, out)
 
-        # TODO: Mask out-of-range values
+        # Check if there are any points that may lie outside the valid l/m
+        # region. If not (common case) we can avoid computing masks.
+        max_l = np.max(np.abs(l))
+        max_m = np.max(np.abs(m))
+        max_wavenumber = np.max(wavenumber)
+        limit_l = 0.5 / abs(self.x_step)
+        limit_m = 0.5 / abs(self.y_step)
+        if max_l * max_wavenumber > limit_l:
+            invalid = np.multiply.outer(wavenumber, np.abs(l)) > limit_l
+            # Insert axes for m and Jones terms
+            invalid = invalid[..., np.newaxis, :, np.newaxis, np.newaxis]
+            np.copyto(out, np.nan, where=invalid)
+        if max_m * max_wavenumber > limit_m:
+            invalid = np.multiply.outer(wavenumber, np.abs(m)) > limit_m
+            # Insert axes for l and Jones terms
+            invalid = invalid[..., np.newaxis, np.newaxis, np.newaxis]
+            np.copyto(out, np.nan, where=invalid)
+
         return out
 
     def sample_grid(self, l: ArrayLike, m: ArrayLike, frequency: u.Quantity,   # noqa: E741
