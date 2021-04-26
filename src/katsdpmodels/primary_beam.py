@@ -653,6 +653,10 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
             y = y_m * wavenumber[freq_idx]
             coeff1 = _expjm2pi(np.outer(l, x))
             coeff2 = _expjm2pi(np.outer(m, y))
+            # Shove the polarizations into extra columns in a matrix. Matrix
+            # multiplication treats the columns in the RHS independently,
+            # which is what we want for polarizations, and the result then
+            # has the right memory layout.
             tmp = np.zeros((len(y), len(l) * 4), np.complex64)
             s = samples[freq_idx]
             for i in range(2):
