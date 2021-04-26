@@ -580,9 +580,9 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
             # Compute sum of squared magnitudes across the 4 Jones terms.
             # Viewing at float32 simplifies summing squared magnitudes.
             assert xy.dtype == np.dtype(np.complex64)
-            out = np.sum(np.square(xy.view(np.float32)), axis=(-2, -1), out=out)
-            out *= 0.5
-            return out
+            ret = np.sum(np.square(xy.view(np.float32)), axis=(-2, -1), out=out)
+            ret *= 0.5
+            return ret
         else:
             raise ValueError(f'Unrecognised output_type {output_type}')
 
