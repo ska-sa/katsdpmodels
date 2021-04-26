@@ -18,7 +18,7 @@
 
 import contextlib
 import pathlib
-from typing import Generator, Any, cast
+from typing import Generator, Any, Union, cast
 
 import astropy.units as u
 from astropy import constants
@@ -226,15 +226,6 @@ def test_sample_exact_scalar_freq(
     # Check that we get identity matrix at the origin
     np.testing.assert_allclose(actual[0], np.eye(2), rtol=0, atol=1e-6)
 
-    # Also check that out parameters work
-    actual_out = np.zeros_like(expected)
-    assert aperture_plane_model.sample(
-        l, m, frequency,
-        primary_beam.AltAzFrame(),
-        primary_beam.OutputType.JONES_HV,
-        out=actual_out) is actual_out
-    np.testing.assert_array_equal(actual_out, actual)
-
 
 def test_sample_interp_scalar_freq(
         aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) -> None:
@@ -314,16 +305,8 @@ def test_sample_frequency_array(
         l, m, frequency,
         primary_beam.AltAzFrame(),
         primary_beam.OutputType.JONES_HV)
-    # And again with an out array to test that too
-    actual_out = np.zeros_like(expected)
-    assert aperture_plane_model.sample(
-        l, m, frequency,
-        primary_beam.AltAzFrame(),
-        primary_beam.OutputType.JONES_HV,
-        out=actual_out) is actual_out
 
     np.testing.assert_array_equal(actual, expected)
-    np.testing.assert_array_equal(actual_out, expected)
 
 
 def test_sample_lm_broadcast(aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) -> None:
@@ -431,6 +414,27 @@ def test_sample_bad_out(
             primary_beam.AltAzFrame(),
             primary_beam.OutputType.JONES_HV,
             out=out)
+
+
+@pytest.mark.parametrize(
+    'frame', [primary_beam.AltAzFrame(), primary_beam.RADecFrame(parallactic_angle=40 * u.deg)])
+@pytest.mark.parametrize('output_type', primary_beam.OutputType.__members__)
+def test_sample_out(
+        aperture_plane_model: primary_beam.PrimaryBeamAperturePlane,
+        frame: Union[primary_beam.AltAzFrame, primary_beam.RADecFrame],
+        output_type: primary_beam.OutputType) -> None:
+    model = aperture_plane_model
+    l = np.array([0.01, 0.02, 1])[np.newaxis, :]
+    m = np.array([-0.02, -0.03])[:, np.newaxis]
+    frequency = np.array([[1000, 1200], [1100, 1500]]) * u.MHz
+    try:
+        expected = model.sample(l, m, frequency, frame, output_type)
+    except ValueError:
+        return    # Invalid combination of frame and output_type
+    out = np.zeros(expected.shape, expected.dtype)
+    actual = model.sample(l, m, frequency, frame, output_type, out=out)
+    assert actual is out
+    np.testing.assert_array_equal(out, expected)
 
 
 def _skyoffset_matrix(origin: SkyCoord):
