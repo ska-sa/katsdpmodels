@@ -562,8 +562,6 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
             if not isinstance(frame, RADecFrame):
                 raise ValueError('JONES_XY required a RADecFrame')
             jones = frame.jones_hv_to_xy().astype(np.complex64)
-        elif output_type != OutputType.JONES_HV:
-            raise NotImplementedError('Only JONES_HV and JONES_XY are implemented so far')
 
         if output_type in {OutputType.JONES_XY, OutputType.JONES_HV}:
             return self._sample_altaz(l_, m_, frequency, jones=jones, out=out)
@@ -575,8 +573,18 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
             M = np.block([[xy[..., 0:1, 0:1] * xyc, xy[..., 0:1, 1:2] * xyc],
                           [xy[..., 1:2, 0:1] * xyc, xy[..., 1:2, 1:2] * xyc]])
             return np.matmul(_XY_TO_IQUV @ M, _IQUV_TO_XY, out=out)
+        elif output_type == OutputType.UNPOLARIZED_POWER:
+            # TODO: This can potentially be computed more efficiently by
+            # transformation on the aperture plane.
+            xy = self._sample_altaz(l_, m_, frequency)
+            # Compute sum of squared magnitudes across the 4 Jones terms.
+            # Viewing at float32 simplifies summing squared magnitudes.
+            assert xy.dtype == np.dtype(np.complex64)
+            out = np.sum(np.square(xy.view(np.float32)), axis=(-2, -1), out=out)
+            out *= 0.5
+            return out
         else:
-            assert False, 'Unexpected output_type'
+            raise ValueError(f'Unrecognised output_type {output_type}')
 
     @classmethod
     def from_hdf5(cls: Type[_P], hdf5: h5py.File) -> _P:

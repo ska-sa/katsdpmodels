@@ -554,3 +554,19 @@ def test_sample_mueller(aperture_plane_model: primary_beam.PrimaryBeamAperturePl
     vis = np.tensordot(vis, primary_beam._XY_TO_IQUV, axes=((-1,), (-1,)))
 
     np.testing.assert_allclose(actual, vis, rtol=0, atol=1e-5)
+
+
+def test_sample_unpolarized_power(
+        aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) -> None:
+    model = aperture_plane_model
+    l = [-0.002, 0.001, 0.0, 0.0, 0.0]
+    m = [0.0, 0.02, 0.0, -0.03, 0.01]
+    frequency = [1.25, 1.5] * u.GHz
+    frame = primary_beam.RADecFrame(parallactic_angle=30 * u.deg)
+
+    mueller = model.sample(
+        l, m, frequency, frame, primary_beam.OutputType.MUELLER)
+    unpol = model.sample(
+        l, m, frequency, frame, primary_beam.OutputType.UNPOLARIZED_POWER)
+
+    np.testing.assert_allclose(unpol, mueller[..., 0, 0], atol=1e-5)
