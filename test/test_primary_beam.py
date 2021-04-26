@@ -39,6 +39,17 @@ from katsdpmodels import models, primary_beam
 import katsdpmodels.fetch.requests as fetch_requests
 
 
+FRAME_OUTPUT_TYPE_COMBOS = [
+    (frame, output_type)
+    for frame in [primary_beam.AltAzFrame(),
+                  primary_beam.RADecFrame(parallactic_angle=40 * u.deg)]
+    for output_type in primary_beam.OutputType
+    if (isinstance(frame, primary_beam.RADecFrame)
+        or output_type in {primary_beam.OutputType.JONES_HV,
+                           primary_beam.OutputType.UNPOLARIZED_POWER})
+]
+
+
 @pytest.fixture
 def aperture_plane_model_file(tmp_path) -> h5py.File:
     """Create an aperture-plane model for testing.
@@ -416,9 +427,7 @@ def test_sample_bad_out(
             out=out)
 
 
-@pytest.mark.parametrize(
-    'frame', [primary_beam.AltAzFrame(), primary_beam.RADecFrame(parallactic_angle=40 * u.deg)])
-@pytest.mark.parametrize('output_type', primary_beam.OutputType.__members__)
+@pytest.mark.parametrize('frame, output_type', FRAME_OUTPUT_TYPE_COMBOS)
 def test_sample_out(
         aperture_plane_model: primary_beam.PrimaryBeamAperturePlane,
         frame: Union[primary_beam.AltAzFrame, primary_beam.RADecFrame],
@@ -427,10 +436,7 @@ def test_sample_out(
     l = np.array([0.01, 0.02, 1])[np.newaxis, :]
     m = np.array([-0.02, -0.03])[:, np.newaxis]
     frequency = np.array([[1000, 1200], [1100, 1500]]) * u.MHz
-    try:
-        expected = model.sample(l, m, frequency, frame, output_type)
-    except ValueError:
-        return    # Invalid combination of frame and output_type
+    expected = model.sample(l, m, frequency, frame, output_type)
     out = np.zeros(expected.shape, expected.dtype)
     actual = model.sample(l, m, frequency, frame, output_type, out=out)
     assert actual is out
@@ -574,3 +580,37 @@ def test_sample_unpolarized_power(
         l, m, frequency, frame, primary_beam.OutputType.UNPOLARIZED_POWER)
 
     np.testing.assert_allclose(unpol, mueller[..., 0, 0], atol=1e-5)
+
+
+@pytest.mark.parametrize(
+    'frequency',
+    [
+        1500 * u.MHz,
+        [1250, 1300] * u.MHz,
+        [[1250, 2000], [900, 1500]] * u.MHz
+    ]
+)
+@pytest.mark.parametrize('frame, output_type', FRAME_OUTPUT_TYPE_COMBOS)
+def test_sample_grid(
+        aperture_plane_model: primary_beam.PrimaryBeamAperturePlane,
+        frequency: u.Quantity,
+        frame: Union[primary_beam.AltAzFrame, primary_beam.RADecFrame],
+        output_type: primary_beam.OutputType) -> None:
+    model = aperture_plane_model
+    l = [-0.002, 0.001, 0.0, 0.0, 0.0]
+    m = [0.0, 0.02, 0.0, -0.03, 0.01]
+
+    actual = model.sample_grid(l, m, frequency, frame, output_type)
+    expected = model.sample(
+        np.array(l)[np.newaxis, :], np.array(m)[:, np.newaxis], frequency,
+        frame, output_type)
+    np.testing.assert_allclose(actual, expected, atol=1e-5)
+
+    # Test output parameters
+    out = np.zeros(expected.shape, expected.dtype)
+    ret = model.sample(
+        np.array(l)[np.newaxis, :], np.array(m)[:, np.newaxis], frequency,
+        frame, output_type,
+        out=out)
+    assert ret is out
+    np.testing.assert_array_equal(out, actual)

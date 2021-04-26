@@ -586,6 +586,19 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         else:
             raise ValueError(f'Unrecognised output_type {output_type}')
 
+    def sample_grid(self, l: ArrayLike, m: ArrayLike, frequency: u.Quantity,   # noqa: E741
+                    frame: Union[AltAzFrame, RADecFrame],
+                    output_type: OutputType, *,
+                    out: Optional[np.ndarray] = None) -> np.ndarray:
+        # This is a completely unoptimised placeholder implementation.
+        l_ = np.asarray(l)
+        m_ = np.asarray(m)
+        if l_.ndim != 1 or m_.ndim != 1:
+            raise ValueError('l and m must be 1D')
+        return self.sample(
+            l_[np.newaxis, :], m_[:, np.newaxis], frequency,
+            frame, output_type, out=out)
+
     @classmethod
     def from_hdf5(cls: Type[_P], hdf5: h5py.File) -> _P:
         samples = models.get_hdf5_dataset(hdf5, 'aperture_plane')
