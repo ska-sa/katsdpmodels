@@ -342,6 +342,13 @@ def test_sample_lm_broadcast(aperture_plane_model: primary_beam.PrimaryBeamApert
     # in a different order depending on size.
     np.testing.assert_allclose(actual, expected, atol=1e-7)
 
+    # Also check with RADecFrame
+    actual = aperture_plane_model.sample(
+        -l[np.newaxis, :], m[:, np.newaxis], frequency,
+        primary_beam.RADecFrame(0 * u.deg),
+        primary_beam.OutputType.JONES_HV)
+    np.testing.assert_allclose(actual, expected, atol=1e-7)
+
 
 @pytest.mark.parametrize(
     'l, m, frequency',

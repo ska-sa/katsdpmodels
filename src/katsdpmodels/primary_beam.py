@@ -627,8 +627,9 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
             lm = np.stack([l_.ravel(), m_.ravel()], axis=0)
             # Convert to AltAz frame
             lm = frame.lm_to_hv() @ lm
-            # Unpack again: TODO: unravel
-            l_, m_ = lm
+            # Unpack again
+            l_ = lm[0].reshape(l_.shape)
+            m_ = lm[1].reshape(m_.shape)
         elif not isinstance(frame, AltAzFrame):
             raise TypeError(f'frame must be RADecFrame or AltAzFrame, not {type(frame)}')
         l_ = _asarray(l_, np.float32)
