@@ -22,9 +22,10 @@ from typing_extensions import Literal
 
 import numpy as np
 try:
-    from numpy.typing import ArrayLike
+    from numpy.typing import ArrayLike, DTypeLike
 except ImportError:
     ArrayLike = Any  # type: ignore
+    DTypeLike = Any  # type: ignore
 import numba
 import scipy.interpolate
 import astropy.units as u
@@ -286,7 +287,9 @@ class PrimaryBeam(models.SimpleHDF5Model):
         out
             If specified, provides the memory into which the result will be
             written. It must have the correct shape, the dtype must be
-            ``complex64`` and it must be C contiguous.
+            ``complex64`` (or ``float32`` for
+            :data:`OutputType.UNPOLARIZED_POWER`) and it must be C
+            contiguous.
 
         Raises
         ------
@@ -344,6 +347,35 @@ def _expjm2pi(x):
     """
     y = np.float32(-2 * np.pi) * (x - np.rint(x))
     return complex(np.cos(y), np.sin(y))
+
+
+def _asarray(x: ArrayLike, dtype: Optional[DTypeLike] = None) -> np.ndarray:
+    """Convert an array-like to an array.
+
+    Unlike np.ndarray, this will reject astropy Quantities with dimensions
+    and convert dimensionless quantities correctly even if they have scale.
+
+    When a dtype is specified, uses ``same_kind`` casting.
+    """
+    if isinstance(x, u.Quantity):
+        x = x.to_value(u.dimensionless_unscaled)
+    else:
+        x = np.asarray(x)
+    if dtype is not None:
+        x = x.astype(dtype, copy=False, casting='same_kind')
+    return x
+
+
+def _check_out(out: Optional[np.ndarray], output_type: OutputType) -> None:
+    if out is not None:
+        if output_type != OutputType.UNPOLARIZED_POWER:
+            expected_dtype = np.dtype(np.complex64)
+        else:
+            expected_dtype = np.dtype(np.float32)
+        if out.dtype != expected_dtype:
+            raise TypeError(f'out must have dtype {expected_dtype}, not {out.dtype}')
+        if not out.flags.c_contiguous:
+            raise ValueError('out must be C contiguous')
 
 
 class PrimaryBeamAperturePlane(PrimaryBeam):
@@ -446,10 +478,57 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
     def band(self) -> Optional[str]:
         return self._band
 
+    def _prepare_samples(self, frequency: u.Quantity,
+                         frame: Union[AltAzFrame, RADecFrame],
+                         output_type: OutputType) -> np.ndarray:
+        """Interpolate aperture plane to selected frequencies, and optionally rotate."""
+        frequency_Hz = frequency.to_value(u.Hz).astype(np.float32, copy=False, casting='same_kind')
+        samples = self._interp_samples(frequency_Hz)
+        if output_type in {OutputType.JONES_XY, OutputType.MUELLER}:
+            if not isinstance(frame, RADecFrame):
+                raise ValueError('JONES_XY required a RADecFrame')
+            jones = frame.jones_hv_to_xy().astype(np.complex64, copy=False)
+            # Matrix multiply, but tensordot/matmul would require shuffling
+            # the axes around. TODO: see if it's faster to move into Numba
+            # inner loop.
+            samples = np.einsum('ij,...jkxy->...ikxy', jones, samples)
+        return samples
+
+    @staticmethod
+    def _finalize(values: np.ndarray, output_type: OutputType,
+                  out: Optional[np.ndarray]) -> np.ndarray:
+        """Handle :data:`OutputType.MUELLER` and `OutputType.UNPOLARIZED_POWER`.
+
+        Parameters
+        ----------
+        values
+            Stacked 2x2 Jones matrices, suitable for `output_type`
+        output_type
+            Target output type, either :data:`OutputType.MUELLER` or
+            :data:`OutputType.UNPOLARIZED_POWER`.
+        """
+        if output_type == OutputType.MUELLER:
+            conj = np.conj(values)
+            # Take Kronecker product. Unfortunately np.kron doesn't allow
+            # operating over subsets of dimensions.
+            M = np.block([[values[..., 0:1, 0:1] * conj, values[..., 0:1, 1:2] * conj],
+                          [values[..., 1:2, 0:1] * conj, values[..., 1:2, 1:2] * conj]])
+            return np.matmul(_XY_TO_IQUV @ M, _IQUV_TO_XY, out=out)
+        elif output_type == OutputType.UNPOLARIZED_POWER:
+            # Compute sum of squared magnitudes across the 4 Jones terms.
+            # Viewing at float32 simplifies summing squared magnitudes.
+            assert values.dtype == np.dtype(np.complex64)
+            ret = np.sum(np.square(values.view(np.float32)), axis=(-2, -1), out=out)
+            ret *= 0.5
+            return ret
+        else:
+            raise ValueError(f'Unrecognised output_type {output_type}')
+
     @staticmethod
     @numba.njit
-    def _sample_impl(aperture, xf, yf, l, m, out):
-        """Numba implementation of :meth:`_sample_altaz`.
+    def _sample_impl(aperture: np.ndarray, xf: np.ndarray, yf: np.ndarray,
+                     l: np.ndarray, m: np.ndarray, out: np.ndarray) -> None:
+        """Numba implementation details of :meth:`_sample_altaz_jones`.
 
         Parameters
         ----------
@@ -476,52 +555,42 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
                     for lm_idx in np.ndindex(l.shape):
                         out_chunk[lm_idx] = np.dot(tmp[lm_idx], coeff1[lm_idx])
 
-    def _sample_altaz(
-            self, l: ArrayLike, m: ArrayLike, frequency: u.Quantity,
-            jones: Optional[np.ndarray] = None,
+    def _sample_altaz_jones(
+            self, l: np.ndarray, m: np.ndarray, frequency: u.Quantity,
+            frame: Union[AltAzFrame, RADecFrame], output_type: OutputType, *,
             out: Optional[np.ndarray] = None) -> np.ndarray:
-        """Implementation of :meth:`sample` for AltAzFrame."""
-        l_ = np.asarray(l).astype(np.float32, copy=False, casting='same_kind')
-        m_ = np.asarray(m).astype(np.float32, copy=False, casting='same_kind')
-        max_l = np.max(np.abs(l_))
-        max_m = np.max(np.abs(m_))
+        """Partial implementation of :meth:`sample`.
+
+        It takes `l` and `m` in AltAz frame, and produces Jones matrices in
+        either :data:`OutputType.JONES_HV` or :data:`OutputType.JONES_XY`.
+        The provided `frame` and `output_type` are used only for polarization
+        rotation.
+
+        l and m must already be broadcast to the same shape, and must be float32.
+        """
+        assert l.shape == m.shape
+        assert l.dtype == np.float32
+        assert m.dtype == np.float32
+        max_l = np.max(np.abs(l))
+        max_m = np.max(np.abs(m))
         wavenumber = frequency.to('m^-1', equivalencies=u.spectral())
 
-        l_, m_ = np.broadcast_arrays(l_, m_)
-        # numba seems to trigger a FutureWarning when it checks the writeable
-        # flag on these broadcast arrays. Suppress it by making them
-        # explicitly readonly.
-        l_.flags.writeable = False
-        m_.flags.writeable = False
-        out_shape = frequency.shape + l_.shape + (2, 2)
+        out_shape = frequency.shape + l.shape + (2, 2)
         if out is None:
             out = np.empty(out_shape, np.complex64)
-        else:
-            if out.shape != out_shape:
-                raise ValueError(f'out must have shape {out_shape}, not {out.shape}')
-            if out.dtype != np.dtype(np.complex64):
-                raise TypeError(f'out must have dtype complex64, not {out.dtype}')
-            if not out.flags.c_contiguous:
-                raise ValueError('out must be C contiguous')
+        elif out.shape != out_shape:
+            raise ValueError(f'out must have shape {out_shape}, not {out.shape}')
 
         # Compute x and y in wavelengths
-        xf = np.multiply.outer(wavenumber, self.x).to_value(u.dimensionless_unscaled)
-        yf = np.multiply.outer(wavenumber, self.y).to_value(u.dimensionless_unscaled)
-        # Ensure everything is done in float32
-        xf = xf.astype(np.float32, copy=False, casting='same_kind')
-        yf = yf.astype(np.float32, copy=False, casting='same_kind')
-        frequency_Hz = frequency.to_value(u.Hz).astype(np.float32, copy=False)
+        xf = _asarray(np.multiply.outer(wavenumber, self.x), np.float32)
+        yf = _asarray(np.multiply.outer(wavenumber, self.y), np.float32)
         # Numba can't handle the broadcasting involved in multi-dimensional
         # l/m, so flatten. Assign to shape instead of reshape to ensure no
         # copying.
         out_view = out.view()
-        out_view.shape = frequency.shape + (l_.size, 2, 2)
-        samples = self._interp_samples(frequency_Hz)
-        if jones is not None:
-            # Matrix multiply, but tensordot/matmul would require shuffling
-            # the axes around.
-            samples = np.einsum('ij,...jkxy->...ikxy', jones, samples)
-        self._sample_impl(samples, xf, yf, l_.ravel(), m_.ravel(), out_view)
+        out_view.shape = frequency.shape + (l.size, 2, 2)
+        samples = self._prepare_samples(frequency, frame, output_type)
+        self._sample_impl(samples, xf, yf, l.ravel(), m.ravel(), out_view)
 
         # Check if there are any points that may lie outside the valid l/m
         # region. If not (common case) we can avoid computing masks.
@@ -531,8 +600,8 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         if (max_l * max_wavenumber > limit_l
                 or max_m * max_wavenumber > limit_m):
             invalid = (
-                (np.multiply.outer(wavenumber, np.abs(l_)) > limit_l)
-                | (np.multiply.outer(wavenumber, np.abs(m_)) > limit_m)
+                (np.multiply.outer(wavenumber, np.abs(l)) > limit_l)
+                | (np.multiply.outer(wavenumber, np.abs(m)) > limit_m)
             )
             # Add the axes for the Jones matrix dimensions
             invalid = invalid[..., np.newaxis, np.newaxis]
@@ -544,60 +613,105 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
                frame: Union[AltAzFrame, RADecFrame],
                output_type: OutputType, *,
                out: Optional[np.ndarray] = None) -> np.ndarray:
-        l_ = np.asarray(l)
-        m_ = np.asarray(m)
+        _check_out(out, output_type)
+        l_ = _asarray(l)
+        m_ = _asarray(m)
+        l_, m_ = np.broadcast_arrays(l_, m_)
+        # numba seems to trigger a FutureWarning when it checks the writeable
+        # flag on these broadcast arrays. Suppress it by making them
+        # explicitly readonly.
+        l_.flags.writeable = False
+        m_.flags.writeable = False
         if isinstance(frame, RADecFrame):
-            l_, m_ = np.broadcast_arrays(l_, m_)
             # Form a matrix with just two rows
             lm = np.stack([l_.ravel(), m_.ravel()], axis=0)
             # Convert to AltAz frame
             lm = frame.lm_to_hv() @ lm
-            # Unpack again
+            # Unpack again: TODO: unravel
             l_, m_ = lm
         elif not isinstance(frame, AltAzFrame):
             raise TypeError(f'frame must be RADecFrame or AltAzFrame, not {type(frame)}')
-
-        jones: Optional[np.ndarray] = None
-        if output_type in {OutputType.JONES_XY, OutputType.MUELLER}:
-            if not isinstance(frame, RADecFrame):
-                raise ValueError('JONES_XY required a RADecFrame')
-            jones = frame.jones_hv_to_xy().astype(np.complex64)
+        l_ = _asarray(l_, np.float32)
+        m_ = _asarray(m_, np.float32)
 
         if output_type in {OutputType.JONES_XY, OutputType.JONES_HV}:
-            return self._sample_altaz(l_, m_, frequency, jones=jones, out=out)
-        elif output_type == OutputType.MUELLER:
-            xy = self._sample_altaz(l_, m_, frequency, jones=jones)
-            xyc = np.conj(xy)
-            # Take Kronecker product. Unfortunately np.kron doesn't allow
-            # operating over subsets of dimensions.
-            M = np.block([[xy[..., 0:1, 0:1] * xyc, xy[..., 0:1, 1:2] * xyc],
-                          [xy[..., 1:2, 0:1] * xyc, xy[..., 1:2, 1:2] * xyc]])
-            return np.matmul(_XY_TO_IQUV @ M, _IQUV_TO_XY, out=out)
-        elif output_type == OutputType.UNPOLARIZED_POWER:
-            # TODO: This can potentially be computed more efficiently by
-            # transformation on the aperture plane.
-            xy = self._sample_altaz(l_, m_, frequency)
-            # Compute sum of squared magnitudes across the 4 Jones terms.
-            # Viewing at float32 simplifies summing squared magnitudes.
-            assert xy.dtype == np.dtype(np.complex64)
-            ret = np.sum(np.square(xy.view(np.float32)), axis=(-2, -1), out=out)
-            ret *= 0.5
-            return ret
+            return self._sample_altaz_jones(l_, m_, frequency, frame, output_type, out=out)
         else:
-            raise ValueError(f'Unrecognised output_type {output_type}')
+            jones = self._sample_altaz_jones(l_, m_, frequency, frame, output_type)
+            return self._finalize(jones, output_type, out=out)
+
+    @staticmethod
+    @numba.njit
+    def _sample_grid_impl(x_m: np.ndarray, y_m: np.ndarray,
+                          l: np.ndarray, m: np.ndarray,
+                          wavenumber: np.ndarray,
+                          samples: np.ndarray,
+                          out: np.ndarray) -> None:
+        for freq_idx in np.ndindex(wavenumber.shape):
+            x = x_m * wavenumber[freq_idx]
+            y = y_m * wavenumber[freq_idx]
+            coeff1 = _expjm2pi(np.outer(l, x))
+            coeff2 = _expjm2pi(np.outer(m, y))
+            tmp = np.zeros((len(y), len(l) * 4), np.complex64)
+            s = samples[freq_idx]
+            for i in range(2):
+                for j in range(2):
+                    tmp[:, (i * 2 + j)::4] = s[i, j] @ coeff1.T
+            out[freq_idx] = (coeff2 @ tmp).reshape(out[freq_idx].shape)
+
+    def _sample_grid_altaz_jones(
+            self, l: np.ndarray, m: np.ndarray, frequency: u.Quantity, *,
+            out: Optional[np.ndarray] = None) -> np.ndarray:
+        """Partial implementation of :meth:`sample_grid`.
+
+        It takes `l` and `m` in AltAz frame and produces Jones HV matrices.
+        """
+        assert l.ndim == 1
+        assert l.shape == m.shape
+        assert l.dtype == np.dtype(np.float32)
+        assert m.dtype == np.dtype(np.float32)
+        x_m = _asarray(self.x.to_value(u.m), np.float32)
+        y_m = _asarray(self.y.to_value(u.m), np.float32)
+        wavenumber = _asarray(
+            frequency.to_value('m^-1', equivalencies=u.spectral()),
+            np.float32)
+        samples = self._prepare_samples(frequency, AltAzFrame(), OutputType.JONES_HV)
+        out_shape = frequency.shape + m.shape + l.shape + (2, 2)
+        if out is None:
+            out = np.empty(out_shape, np.complex64)
+        elif out.shape != out_shape:
+            raise ValueError(f'out must have shape {out_shape}, not {out.shape}')
+        self._sample_grid_impl(x_m, y_m, l, m, wavenumber, samples, out)
+
+        # TODO: Mask out-of-range values
+        return out
 
     def sample_grid(self, l: ArrayLike, m: ArrayLike, frequency: u.Quantity,   # noqa: E741
                     frame: Union[AltAzFrame, RADecFrame],
                     output_type: OutputType, *,
                     out: Optional[np.ndarray] = None) -> np.ndarray:
         # This is a completely unoptimised placeholder implementation.
-        l_ = np.asarray(l)
-        m_ = np.asarray(m)
+        l_ = _asarray(l, np.float32)
+        m_ = _asarray(m, np.float32)
         if l_.ndim != 1 or m_.ndim != 1:
             raise ValueError('l and m must be 1D')
-        return self.sample(
-            l_[np.newaxis, :], m_[:, np.newaxis], frequency,
-            frame, output_type, out=out)
+        if (not isinstance(frame, AltAzFrame)
+                or output_type not in {OutputType.JONES_HV, OutputType.UNPOLARIZED_POWER}):
+            # Can't take advantage of separability when applying an arbitrary
+            # parallactic angle rotation. However, there may be some value in
+            # supporting a fast path when PA is a multiple of pi/2, for users
+            # that will interpolate from that grid to other parallactic
+            # angles but don't want to deal with the handedness change.
+            return self.sample(
+                l_[np.newaxis, :], m_[:, np.newaxis], frequency,
+                frame, output_type, out=out)
+        else:
+            _check_out(out, output_type)
+            if output_type == OutputType.JONES_HV:
+                return self._sample_grid_altaz_jones(l_, m_, frequency, out=out)
+            else:
+                mid = self._sample_grid_altaz_jones(l_, m_, frequency)
+                return self._finalize(mid, output_type, out=out)
 
     @classmethod
     def from_hdf5(cls: Type[_P], hdf5: h5py.File) -> _P:

@@ -586,7 +586,7 @@ def test_sample_unpolarized_power(
     'frequency',
     [
         1500 * u.MHz,
-        [1250, 1300] * u.MHz,
+        [1250, 1600] * u.MHz,
         [[1250, 2000], [900, 1500]] * u.MHz
     ]
 )
@@ -597,8 +597,8 @@ def test_sample_grid(
         frame: Union[primary_beam.AltAzFrame, primary_beam.RADecFrame],
         output_type: primary_beam.OutputType) -> None:
     model = aperture_plane_model
-    l = [-0.002, 0.001, 0.0, 0.0, 0.0]
-    m = [0.0, 0.02, 0.0, -0.03, 0.01]
+    l = [-0.002, 0.001, 0.0, 0.0, 0.0, 0.3]
+    m = [0.0, 0.02, -0.6, -0.03, 0.01, 0.2]
 
     actual = model.sample_grid(l, m, frequency, frame, output_type)
     expected = model.sample(
@@ -606,10 +606,10 @@ def test_sample_grid(
         frame, output_type)
     np.testing.assert_allclose(actual, expected, atol=1e-5)
 
-    # Test output parameters
+    # Test out parameter
     out = np.zeros(expected.shape, expected.dtype)
-    ret = model.sample(
-        np.array(l)[np.newaxis, :], np.array(m)[:, np.newaxis], frequency,
+    ret = model.sample_grid(
+        l, m, frequency,
         frame, output_type,
         out=out)
     assert ret is out
