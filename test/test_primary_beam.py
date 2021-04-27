@@ -22,11 +22,8 @@ from typing import Generator, Any, Union, cast
 
 import astropy.units as u
 from astropy import constants
-from astropy.coordinates import (
-    EarthLocation, AltAz, SkyCoord,
-    CartesianRepresentation, UnitSphericalRepresentation)
+from astropy.coordinates import EarthLocation, AltAz, SkyCoord, CartesianRepresentation
 from astropy.time import Time
-from astropy.coordinates.matrix_utilities import rotation_matrix
 import numpy as np
 try:
     from numpy.typing import ArrayLike
@@ -450,47 +447,26 @@ def test_sample_out(
     np.testing.assert_array_equal(out, expected)
 
 
-def _skyoffset_matrix(origin: SkyCoord):
-    """Reproduce the matrix used by :class:`astropy.coordinates.SkyOffsetFrame`.
-
-    This is the matrix for transforming from a reference frame to an offset
-    frame. It does not support the rotation attribute of
-    :class:`astropy.coordinates.SkyOffsetFrame`.
-    """
-    # Based on reference_to_skyoffset in the astropy code.
-    origin_sph = origin.spherical
-    maty = rotation_matrix(-origin_sph.lat, 'y')
-    matz = rotation_matrix(origin_sph.lon, 'z')
-    return maty @ matz
-
-
 def _coords_to_lm(coords: SkyCoord, origin: SkyCoord) -> np.ndarray:
     """Convert sky coordinates to l/m direction cosines.
 
     The `coords` and `origin` must be in the same frame.
-
-    This would be simpler with SkyOffsetFrame, but unfortunately
-    https://github.com/astropy/astropy/issues/11277 makes it break randomly.
     """
+    # Go via .frame as workaround for https://github.com/astropy/astropy/issues/11277
     assert coords.frame.is_equivalent_frame(origin.frame)
-    mat = _skyoffset_matrix(origin)
-    offsets = coords.represent_as(CartesianRepresentation).transform(mat)
-    return offsets.xyz[1:]    # astropy spherical (0, 0) at +x, so y, z are l, m
+    skyoffset = coords.frame.transform_to(origin.skyoffset_frame())
+    offsets = skyoffset.represent_as(CartesianRepresentation)
+    return offsets.xyz[1:]    # astropy puts spherical (0, 0) at +x, so y, z are l, m
 
 
 def _lm_to_coords(l: ArrayLike, m: ArrayLike, origin: SkyCoord) -> SkyCoord:
-    """Convert l/m cooordinates relative to an origin into coordinates.
-
-    This would be simpler with SkyOffsetFrame, but unfortunately
-    https://github.com/astropy/astropy/issues/11277 makes it break randomly.
-    """
+    """Convert l/m cooordinates relative to an origin into coordinates."""
     l = np.asarray(l)
     m = np.asarray(m)
     n = np.sqrt(1 - (l * l + m * m))
     nlm = CartesianRepresentation(np.stack([n, l, m]))
-    mat = _skyoffset_matrix(origin).T   # Transposing a rotation matrix inverts it
-    xyz = nlm.transform(mat)
-    return SkyCoord(xyz.represent_as(UnitSphericalRepresentation), frame=origin)
+    skyoffset = SkyCoord(nlm, frame=origin.skyoffset_frame())
+    return skyoffset.transform_to(origin)
 
 
 @pytest.mark.parametrize('lat', [-30 * u.deg, 35 * u.deg])
