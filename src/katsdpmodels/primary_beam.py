@@ -309,7 +309,7 @@ class PrimaryBeam(models.SimpleHDF5Model):
                     frame: Union[AltAzFrame, RADecFrame],
                     output_type: OutputType, *,
                     out: Optional[np.ndarray] = None) -> np.ndarray:
-        """Sample the primary beam on a regular grid.
+        """Sample the primary beam on a grid aligned to the axes.
 
         This is equivalent to
         :code:`sample(l[np.newaxis, :], m[:, np.newaxis], ...)`, but may be
