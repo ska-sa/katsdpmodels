@@ -4,7 +4,9 @@ aiohttp
 aiohttp-retry
 astropy
 h5py
+numba
 numpy
 requests
+scipy
 strict-rfc3339
 typing-extensions

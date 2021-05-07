@@ -27,6 +27,10 @@ from typing_extensions import Literal
 import h5py
 import numpy as np
 import numpy.lib.recfunctions
+try:
+    from numpy.typing import DTypeLike
+except ImportError:
+    DTypeLike = Any  # type: ignore
 import strict_rfc3339
 
 
@@ -281,12 +285,14 @@ class SimpleHDF5Model(Model):
 
 @overload
 def get_hdf5_attr(attrs: Mapping[str, object], name: str, required_type: Type[_T], *,
-                  required: Literal[True]) -> _T: ...
+                  required: Literal[True]) -> _T:
+    ...
 
 
 @overload
 def get_hdf5_attr(attrs: Mapping[str, object], name: str, required_type: Type[_T], *,
-                  required: bool = False) -> Optional[_T]: ...
+                  required: bool = False) -> Optional[_T]:
+    ...
 
 
 def get_hdf5_attr(attrs, name, required_type, *, required=False):
@@ -355,12 +361,14 @@ def rfc3339_to_datetime(timestamp: str) -> datetime:
     return datetime.fromtimestamp(unix_time, timezone.utc)
 
 
-def require_columns(name: str, array: Any, dtype: np.dtype, ndim: int) -> Any:
+def require_columns(name: str, array: Any, dtype: DTypeLike, ndim: int) -> Any:
     """Validate the columns in a table and the dimensionality.
 
-    The `dtype` is the expected dtype, which must be a structured dtype. The
+    The `dtype` is the expected dtype, which may be a structured dtype. The
     array is checked for compatibility: it must have all the required fields
     (but may have more), and they must be castable to the the expected dtype.
+    Alternatively, if `dtype` is non-structured, the array must have a dtype
+    that can be cast. In both cases, 'same_kind' casting is required.
 
     The return value is the input array restricted to the required columns
     and cast to the required dtype. It may be either a view or a copy,
@@ -374,14 +382,19 @@ def require_columns(name: str, array: Any, dtype: np.dtype, ndim: int) -> Any:
     DataError
         if the types are not compatible or the wrong number of dimensions are present.
     """
+    dtype = np.dtype(dtype)
     # The type: ignore statements below are due to https://github.com/numpy/numpy/issues/18597
     if array.ndim != ndim:
         raise DataError(f'{name} should be {ndim}-dimensional, but is {array.ndim}-dimensional')
     if array.dtype == dtype:
         return np.asanyarray(array)
+    if dtype.names is None:
+        if not np.can_cast(array.dtype, dtype, 'same_kind'):
+            raise DataError(
+                f'{name} has type {array.dtype}, expected {dtype}')
+        return array.astype(dtype)
     if array.dtype.names is None:
         raise DataError(f'{name} does not have named columns')
-    assert dtype.names is not None, "dtype must be a structured dtype"
     for col_name in dtype.names:
         if col_name not in array.dtype.names:
             raise DataError(f'{name} column {col_name} is missing')

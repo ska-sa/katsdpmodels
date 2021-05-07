@@ -130,3 +130,78 @@ fractional_ranges
         be masked if :math:`[\frac{i-0.5}{nchans}, \frac{i+0.5}{nchans}]`
         overlaps any of the ranges. Note that this means that channel 0
         is centred at 0.0 but extends below it.
+
+Primary beam
+------------
+The file contains the information in a compact Fourier-transform ("aperture
+plane") form. It comprises a 3-dimensional array J of Jones matrices. Another
+three arrays :math:`\nu`, :math:`y` and :math:`x` indicate the frequency (in
+Hz) and spatial position (in metres) of each sample along the axes.
+
+To determine the response at a sampled frequency :math:`\nu_f` and some
+direction, turn the direction into direction cosines :math:`l` and :math:`m`
+relative to the pointing centre (as defined in
+:class:`katsdpmodels.primary_beam.AltAzFrame`). Then the Jones
+matrix for the response is
+
+.. math:: \frac{1}{|x|\cdot|y|}
+          \sum_{j,k} e^{-2\pi i (x_j l + y_k m)\nu_f/c} J_{f,k,j},
+
+where :math:`|x|`, :math:`|y|` are the number of elements in the respective
+arrays and :math:`c` is the speed of light.
+The Jones matrices correspond to :attr:`.OutputType.JONES_HV`. Note the
+reversed axis order in accessing :math:`J`.
+
+To sample at an intermediate frequency, use linear interpolation along the
+frequency axis in the aperture plane.
+
+See :class:`katsdpmodels.primary_beam.PrimaryBeam` for other definitions and
+sign conventions.
+
+Attributes
+^^^^^^^^^^
+model_type
+    ``primary_beam``
+
+model_format
+    ``aperture_plane``
+
+antenna
+    The name of the antenna to which this model applies. Absent if this model
+    is not specific to a single antenna (the more generic ``model_target`` may
+    provide human-readable information about the range of applicable antennas).
+
+receiver
+    Serial number of the receiver to which this model applies (as a string, to
+    allow for a variety of serial number formats). Absent if this model is not
+    specific to a single receiver.
+
+band
+    String identifier of the receiver band to which this model applies. Always
+    present.
+
+x_start, y_start
+    Coordinates associated with the first sample along the respective axes.
+
+y_step, y_step
+    Spacing between samples along the respective axes.
+
+The `antenna`, `receiver` and `band` are intended to be machine-readable so
+they may be compared to the actual antenna, receiver and band in use to detect
+incorrect models (for example, if a receiver was swapped out but the model was
+not updated). Behaviour in such cases is beyond the scope of this
+specification (and this package does not do any such checks itself).
+
+Datasets
+^^^^^^^^
+frequency
+    1D array of sampled frequencies. It must be strictly increasing.
+
+aperture_plane
+    5D array, with axes corresponding to (in order)
+
+    - frequency
+    - row of Jones matrix (length 2)
+    - column of Jones matrix (length 2)
+    - y
+    - x
