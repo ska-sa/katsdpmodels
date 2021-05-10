@@ -264,7 +264,7 @@ class PrimaryBeam(models.SimpleHDF5Model):
                frame: Union[AltAzFrame, RADecFrame],
                output_type: OutputType, *,
                out: Optional[np.ndarray] = None) -> np.ndarray:
-        """Sample the primary.
+        """Sample the primary beam.
 
         A sample is returned for each combination of a position (given by `l`,
         `m`) with a frequency. The dimensions of the output will be first those
