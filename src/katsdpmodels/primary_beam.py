@@ -309,7 +309,7 @@ class PrimaryBeam(models.SimpleHDF5Model):
                     frame: Union[AltAzFrame, RADecFrame],
                     output_type: OutputType, *,
                     out: Optional[np.ndarray] = None) -> np.ndarray:
-        """Sample the primary beam on a regular grid.
+        """Sample the primary beam on a grid aligned to the axes.
 
         This is equivalent to
         :code:`sample(l[np.newaxis, :], m[:, np.newaxis], ...)`, but may be
@@ -490,8 +490,10 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
                 raise ValueError('JONES_XY required a RADecFrame')
             jones = frame.jones_hv_to_xy().astype(np.complex64, copy=False)
             # Matrix multiply, but tensordot/matmul would require shuffling
-            # the axes around. TODO: see if it's faster to move into Numba
-            # inner loop.
+            # the axes around. The Jones dimensions are axes -4 and -3 on both
+            # the input and output (i, j and k refer to the axes involved in
+            # the matrix multiply).
+            # TODO: see if it's faster to move into Numba inner loop.
             samples = np.einsum('ij,...jkxy->...ikxy', jones, samples)
         return samples
 
