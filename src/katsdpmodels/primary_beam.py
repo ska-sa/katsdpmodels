@@ -392,7 +392,7 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
             self,
             x_start: u.Quantity, y_start: u.Quantity,
             x_step: u.Quantity, y_step: u.Quantity,
-            frequency: u.Quantity, samples: u.Quantity,
+            frequency: u.Quantity, samples: np.ndarray,
             *,
             antenna: Optional[str] = None,
             receiver: Optional[str] = None,
