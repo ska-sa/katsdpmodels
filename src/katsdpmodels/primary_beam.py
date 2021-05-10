@@ -759,3 +759,50 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
                    antenna=models.get_hdf5_attr(attrs, 'antenna', str),
                    receiver=models.get_hdf5_attr(attrs, 'receiver', str),
                    band=models.get_hdf5_attr(attrs, 'band', str))
+
+    @classmethod
+    def from_katholog(cls: Type[_P], model, antenna: str = None) -> _P:
+        """Load a model represented in the :mod:`katholog` package.
+
+        Parameters
+        ----------
+        model : :class:`katholog.Aperture`
+            The katholog model from which to load.
+        antenna
+            The antenna name for which to load data. If no value is specified,
+            the array average is loaded.
+        """
+        if antenna is None:
+            antenna_idx = -1
+        else:
+            antenna_idx = model.scanantennanames.index(antenna)
+
+        frequency = model.freqMHz * u.MHz
+        x_start = -0.5 * model.mapsize * u.m
+        y_start = x_start
+        x_step = model.mapsize / model.gridsize * u.m
+        y_step = x_step
+        # Select only the desired antenna
+        samples = model.apert[:, antenna_idx]
+        # katholog stored polarisations as HH, HV, VH, VV (first letter is
+        # feed, second is radiation). Reshape into Jones matrix.
+        samples = samples.reshape((2, 2) + samples.shape[1:])
+        # Move the Jones axes to the trailing dimensions for normalisation
+        samples = np.moveaxis(samples, (0, 1), (3, 4))
+        # Normalise samples so that the central value is the identity
+        c = np.mean(samples, axis=(1, 2), keepdims=True)
+        samples = np.linalg.inv(c) @ samples
+        # Move the Jones axes to their proper place
+        samples = np.moveaxis(samples, (3, 4), (1, 2))
+
+        # Undo katdal band renaming
+        BAND_RENAME = {'L': 'l', 'UHF': 'u', 'S': 's'}
+        band = str(model.env.band)
+        band = BAND_RENAME.get(band, band)
+
+        if antenna is not None:
+            receiver = model.env.receivers[antenna]
+        else:
+            receiver = None
+        return cls(x_start, y_start, x_step, y_step, frequency, samples,
+                   antenna=antenna, band=band, receiver=receiver)
