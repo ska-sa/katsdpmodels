@@ -490,7 +490,7 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
                 raise ValueError('JONES_XY required a RADecFrame')
             jones = frame.jones_hv_to_xy().astype(np.complex64, copy=False)
             # Matrix multiply, but tensordot/matmul would require shuffling
-            # the axes around. We Jones dimensions are axes -4 and -3 on both
+            # the axes around. The Jones dimensions are axes -4 and -3 on both
             # the input and output (i, j and k refer to the axes involved in
             # the matrix multiply).
             # TODO: see if it's faster to move into Numba inner loop.
