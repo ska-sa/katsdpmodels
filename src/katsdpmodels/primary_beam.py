@@ -784,12 +784,13 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         y_step = x_step
         # Select only the desired antenna
         samples = model.apert[:, antenna_idx]
-        # katholog stored polarisations as HH, HV, VH, VV (first letter is
+        # katholog stores polarizations as HH, HV, VH, VV (first letter is
         # feed, second is radiation). Reshape into Jones matrix.
         samples = samples.reshape((2, 2) + samples.shape[1:])
         # Move the Jones axes to the trailing dimensions for normalisation
         samples = np.moveaxis(samples, (0, 1), (3, 4))
-        # Normalise samples so that the central value is the identity
+        # Normalise samples so that the central value (in the image plane, which is
+        # the mean of the aperture-plane values) is the identity.
         c = np.mean(samples, axis=(1, 2), keepdims=True)
         samples = np.linalg.inv(c) @ samples
         # Move the Jones axes to their proper place
@@ -799,7 +800,7 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         band: Optional[str]
         if hasattr(model.env, 'band'):
             BAND_RENAME = {'L': 'l', 'UHF': 'u', 'S': 's'}
-            band = str(model.env.band)
+            band = str(model.env.band)   # It's originally a numpy scalar string
             band = BAND_RENAME.get(band, band)
         else:
             band = None
