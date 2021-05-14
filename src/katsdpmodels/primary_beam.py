@@ -796,9 +796,13 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         samples = np.moveaxis(samples, (3, 4), (1, 2))
 
         # Undo katdal band renaming
-        BAND_RENAME = {'L': 'l', 'UHF': 'u', 'S': 's'}
-        band = str(model.env.band)
-        band = BAND_RENAME.get(band, band)
+        band: Optional[str]
+        if hasattr(model.env, 'band'):
+            BAND_RENAME = {'L': 'l', 'UHF': 'u', 'S': 's'}
+            band = str(model.env.band)
+            band = BAND_RENAME.get(band, band)
+        else:
+            band = None
 
         if antenna is not None:
             receiver = model.env.receivers[antenna]
