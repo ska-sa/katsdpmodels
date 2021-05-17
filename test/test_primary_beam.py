@@ -127,11 +127,17 @@ def test_no_optional_properties(aperture_plane_model_file: h5py.File) -> None:
     h5file = aperture_plane_model_file
     del h5file.attrs['receiver']
     del h5file.attrs['antenna']
-    del h5file.attrs['band']
     with serve_model(h5file) as model:
         assert model.antenna is None
         assert model.receiver is None
-        assert model.band is None
+
+
+def test_no_band(aperture_plane_model_file: h5py.File) -> None:
+    h5file = aperture_plane_model_file
+    del h5file.attrs['band']
+    with pytest.raises(models.DataError, match="attribute 'band' is missing"):
+        with serve_model(h5file):
+            pass
 
 
 def test_single_frequency(aperture_plane_model_file: h5py.File) -> None:

@@ -254,11 +254,8 @@ class PrimaryBeam(models.SimpleHDF5Model):
         raise NotImplementedError()      # pragma: nocover
 
     @property
-    def band(self) -> Optional[str]:
-        """String identifier of the receiver band to which this model applies.
-
-        If not known, it will be ``None``.
-        """
+    def band(self) -> str:
+        """String identifier of the receiver band to which this model applies."""
 
     def sample(self, l: ArrayLike, m: ArrayLike, frequency: u.Quantity,   # noqa: E741
                frame: Union[AltAzFrame, RADecFrame],
@@ -394,9 +391,9 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
             x_step: u.Quantity, y_step: u.Quantity,
             frequency: u.Quantity, samples: np.ndarray,
             *,
+            band: str,
             antenna: Optional[str] = None,
-            receiver: Optional[str] = None,
-            band: Optional[str] = None):
+            receiver: Optional[str] = None) -> None:
         super().__init__()
         # Canonicalise the units to simplify to_hdf5 (and also remove the
         # cost of conversions when methods are called with canonical units,
@@ -476,7 +473,7 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         return self._receiver
 
     @property
-    def band(self) -> Optional[str]:
+    def band(self) -> str:
         return self._band
 
     def _prepare_samples(self, frequency: u.Quantity,
@@ -758,7 +755,7 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         return cls(x_start, y_start, x_step, y_step, frequency, samples,
                    antenna=models.get_hdf5_attr(attrs, 'antenna', str),
                    receiver=models.get_hdf5_attr(attrs, 'receiver', str),
-                   band=models.get_hdf5_attr(attrs, 'band', str))
+                   band=models.get_hdf5_attr(attrs, 'band', str, required=True))
 
     @classmethod
     def from_katholog(cls: Type[_P], model, *,
