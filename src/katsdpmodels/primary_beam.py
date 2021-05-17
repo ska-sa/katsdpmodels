@@ -264,7 +264,7 @@ class PrimaryBeam(models.SimpleHDF5Model):
                frame: Union[AltAzFrame, RADecFrame],
                output_type: OutputType, *,
                out: Optional[np.ndarray] = None) -> np.ndarray:
-        """Sample the primary.
+        """Sample the primary beam.
 
         A sample is returned for each combination of a position (given by `l`,
         `m`) with a frequency. The dimensions of the output will be first those
@@ -392,7 +392,7 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
             self,
             x_start: u.Quantity, y_start: u.Quantity,
             x_step: u.Quantity, y_step: u.Quantity,
-            frequency: u.Quantity, samples: u.Quantity,
+            frequency: u.Quantity, samples: np.ndarray,
             *,
             antenna: Optional[str] = None,
             receiver: Optional[str] = None,
@@ -759,3 +759,64 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
                    antenna=models.get_hdf5_attr(attrs, 'antenna', str),
                    receiver=models.get_hdf5_attr(attrs, 'receiver', str),
                    band=models.get_hdf5_attr(attrs, 'band', str))
+
+    @classmethod
+    def from_katholog(cls: Type[_P], model, *,
+                      antenna: Optional[str] = None,
+                      band: Optional[str] = None) -> _P:
+        """Load a model represented in the :mod:`katholog` package.
+
+        Parameters
+        ----------
+        model : :class:`katholog.Aperture`
+            The katholog model from which to load.
+        antenna
+            The antenna name for which to load data. If no value is specified,
+            the array average is loaded.
+        band
+            The name of the band to set in the returned model. If no value is
+            provided, will try to determine it from the katholog model.
+
+        Raises
+        ------
+        ValueError
+            If `model` does not indicate a band and `band` was not provided.
+        """
+        if antenna is None:
+            antenna_idx = -1
+        else:
+            antenna_idx = model.scanantennanames.index(antenna)
+
+        frequency = model.freqMHz * u.MHz
+        x_start = -0.5 * model.mapsize * u.m
+        y_start = x_start
+        x_step = model.mapsize / model.gridsize * u.m
+        y_step = x_step
+        # Select only the desired antenna
+        samples = model.apert[:, antenna_idx]
+        # katholog stores polarizations as HH, HV, VH, VV (first letter is
+        # feed, second is radiation). Reshape into Jones matrix.
+        samples = samples.reshape((2, 2) + samples.shape[1:])
+        # Move the Jones axes to the trailing dimensions for normalisation
+        samples = np.moveaxis(samples, (0, 1), (3, 4))
+        # Normalise samples so that the central value (in the image plane, which is
+        # the mean of the aperture-plane values) is the identity.
+        c = np.mean(samples, axis=(1, 2), keepdims=True)
+        samples = np.linalg.inv(c) @ samples
+        # Move the Jones axes to their proper place
+        samples = np.moveaxis(samples, (3, 4), (1, 2))
+
+        if band is None and hasattr(model.env, 'band'):
+            # Undo katdal band renaming
+            BAND_RENAME = {'L': 'l', 'UHF': 'u', 'S': 's'}
+            band = str(model.env.band)   # It's originally a numpy scalar string
+            band = BAND_RENAME.get(band, band)
+        if band is None:
+            raise ValueError('Model does not indicate band - it must be passed explicitly')
+
+        if antenna is not None:
+            receiver = model.env.receivers[antenna]
+        else:
+            receiver = None
+        return cls(x_start, y_start, x_step, y_step, frequency, samples,
+                   antenna=antenna, band=band, receiver=receiver)
