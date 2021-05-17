@@ -757,6 +757,27 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
                    receiver=models.get_hdf5_attr(attrs, 'receiver', str),
                    band=models.get_hdf5_attr(attrs, 'band', str, required=True))
 
+    def to_hdf5(self, hdf5: h5py.File) -> None:
+        hdf5.attrs['band'] = self.band
+        if self.antenna is not None:
+            hdf5.attrs['antenna'] = self.antenna
+        if self.receiver is not None:
+            hdf5.attrs['receiver'] = self.receiver
+        hdf5.attrs['x_start'] = self.x_start.to_value(u.m)
+        hdf5.attrs['x_step'] = self.x_step.to_value(u.m)
+        hdf5.attrs['y_start'] = self.y_start.to_value(u.m)
+        hdf5.attrs['y_step'] = self.y_step.to_value(u.m)
+        hdf5.create_dataset(
+            'frequency', data=self.frequency.to_value(u.Hz), track_times=False)
+        # Use chunked storage so that individual frequencies can be loaded
+        # independently in future.
+        hdf5.create_dataset(
+            'aperture_plane',
+            data=self.samples,
+            chunks=(1,) + self.samples.shape[1:],
+            track_times=False
+        )
+
     @classmethod
     def from_katholog(cls: Type[_P], model, *,
                       antenna: Optional[str] = None,

@@ -17,8 +17,9 @@
 """Tests for :mod:`katsdpmodels.primary_beam`"""
 
 import contextlib
+import io
 import pathlib
-from typing import Generator, Any, Union, cast
+from typing import Generator, Any, Union, Optional, cast
 
 import astropy.units as u
 from astropy import constants
@@ -603,3 +604,28 @@ def test_sample_grid(
         out=out)
     assert ret is out
     np.testing.assert_array_equal(out, actual)
+
+
+@pytest.mark.parametrize(
+    'antenna, receiver',
+    [
+        ('m999', 'r123'),
+        (None, None)
+    ]
+)
+def test_to_file(aperture_plane_model: primary_beam.PrimaryBeamAperturePlane,
+                 antenna: Optional[str], receiver: Optional[str]) -> None:
+    model = aperture_plane_model
+    model._antenna = antenna
+    model._receiver = receiver
+    fh = io.BytesIO()
+    model.to_file(fh, content_type='application/x-hdf5')
+    fh.seek(0)
+    new_model = primary_beam.PrimaryBeam.from_file(
+        fh, 'http://test.invalid/test.h5', content_type='application/x-hdf5')
+    assert isinstance(new_model, primary_beam.PrimaryBeamAperturePlane)
+    assert new_model.antenna == antenna
+    assert new_model.receiver == receiver
+    assert new_model.band == model.band
+    np.testing.assert_equal(new_model.frequency, model.frequency)
+    np.testing.assert_equal(new_model.samples, model.samples)
