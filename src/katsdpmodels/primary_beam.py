@@ -761,7 +761,9 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
                    band=models.get_hdf5_attr(attrs, 'band', str))
 
     @classmethod
-    def from_katholog(cls: Type[_P], model, antenna: str = None) -> _P:
+    def from_katholog(cls: Type[_P], model, *,
+                      antenna: Optional[str] = None,
+                      band: Optional[str] = None) -> _P:
         """Load a model represented in the :mod:`katholog` package.
 
         Parameters
@@ -771,6 +773,14 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         antenna
             The antenna name for which to load data. If no value is specified,
             the array average is loaded.
+        band
+            The name of the band to set in the returned model. If no value is
+            provided, will try to determine it from the katholog model.
+
+        Raises
+        ------
+        ValueError
+            If `model` does not indicate a band and `band` was not provided.
         """
         if antenna is None:
             antenna_idx = -1
@@ -796,14 +806,13 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         # Move the Jones axes to their proper place
         samples = np.moveaxis(samples, (3, 4), (1, 2))
 
-        # Undo katdal band renaming
-        band: Optional[str]
-        if hasattr(model.env, 'band'):
+        if band is None and hasattr(model.env, 'band'):
+            # Undo katdal band renaming
             BAND_RENAME = {'L': 'l', 'UHF': 'u', 'S': 's'}
             band = str(model.env.band)   # It's originally a numpy scalar string
             band = BAND_RENAME.get(band, band)
-        else:
-            band = None
+        if band is None:
+            raise ValueError('Model does not indicate band - it must be passed explicitly')
 
         if antenna is not None:
             receiver = model.env.receivers[antenna]
