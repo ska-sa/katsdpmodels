@@ -254,11 +254,8 @@ class PrimaryBeam(models.SimpleHDF5Model):
         raise NotImplementedError()      # pragma: nocover
 
     @property
-    def band(self) -> Optional[str]:
-        """String identifier of the receiver band to which this model applies.
-
-        If not known, it will be ``None``.
-        """
+    def band(self) -> str:
+        """String identifier of the receiver band to which this model applies."""
 
     def sample(self, l: ArrayLike, m: ArrayLike, frequency: u.Quantity,   # noqa: E741
                frame: Union[AltAzFrame, RADecFrame],
@@ -394,9 +391,9 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
             x_step: u.Quantity, y_step: u.Quantity,
             frequency: u.Quantity, samples: np.ndarray,
             *,
+            band: str,
             antenna: Optional[str] = None,
-            receiver: Optional[str] = None,
-            band: Optional[str] = None):
+            receiver: Optional[str] = None) -> None:
         super().__init__()
         # Canonicalise the units to simplify to_hdf5 (and also remove the
         # cost of conversions when methods are called with canonical units,
@@ -476,7 +473,7 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         return self._receiver
 
     @property
-    def band(self) -> Optional[str]:
+    def band(self) -> str:
         return self._band
 
     def _prepare_samples(self, frequency: u.Quantity,
@@ -758,7 +755,28 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         return cls(x_start, y_start, x_step, y_step, frequency, samples,
                    antenna=models.get_hdf5_attr(attrs, 'antenna', str),
                    receiver=models.get_hdf5_attr(attrs, 'receiver', str),
-                   band=models.get_hdf5_attr(attrs, 'band', str))
+                   band=models.get_hdf5_attr(attrs, 'band', str, required=True))
+
+    def to_hdf5(self, hdf5: h5py.File) -> None:
+        hdf5.attrs['band'] = self.band
+        if self.antenna is not None:
+            hdf5.attrs['antenna'] = self.antenna
+        if self.receiver is not None:
+            hdf5.attrs['receiver'] = self.receiver
+        hdf5.attrs['x_start'] = self.x_start.to_value(u.m)
+        hdf5.attrs['x_step'] = self.x_step.to_value(u.m)
+        hdf5.attrs['y_start'] = self.y_start.to_value(u.m)
+        hdf5.attrs['y_step'] = self.y_step.to_value(u.m)
+        hdf5.create_dataset(
+            'frequency', data=self.frequency.to_value(u.Hz), track_times=False)
+        # Use chunked storage so that individual frequencies can be loaded
+        # independently in future.
+        hdf5.create_dataset(
+            'aperture_plane',
+            data=self.samples,
+            chunks=(1,) + self.samples.shape[1:],
+            track_times=False
+        )
 
     @classmethod
     def from_katholog(cls: Type[_P], model, *,
