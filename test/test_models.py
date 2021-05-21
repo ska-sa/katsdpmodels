@@ -32,8 +32,8 @@ from test_utils import DummyModel
 @pytest.fixture
 def dummy_model() -> DummyModel:
     ranges = np.array(
-       [(1, 4.5), (2, -5.5)],
-       dtype=[('a', 'i4'), ('b', 'f8')]
+        [(1, 4.5), (2, -5.5)],
+        dtype=[('a', 'i4'), ('b', 'f8')]
     )
     model = DummyModel(ranges)
     model.author = 'Test author'
@@ -165,6 +165,19 @@ def test_require_columns_dimension_mismatch() -> None:
     with pytest.raises(models.DataError,
                        match='foo should be 1-dimensional, but is 2-dimensional'):
         models.require_columns('foo', array, dtype, 1)
+
+
+def test_require_columns_simple_mismatch() -> None:
+    with pytest.raises(models.DataError,
+                       match='foo has type float64, expected int32'):
+        models.require_columns('foo', np.zeros(3, np.float64), np.int32, 1)
+
+
+def test_require_columns_simple_castable() -> None:
+    array = np.array([1.0, 2.0, 3.0])
+    out = models.require_columns('foo', array, np.float32, 1)
+    np.testing.assert_array_equal(array, out)
+    assert out.dtype == np.dtype(np.float32)
 
 
 def assert_models_equal(model1: DummyModel, model2: DummyModel):
