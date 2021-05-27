@@ -40,7 +40,8 @@ import katsdpmodels.fetch.requests as fetch_requests
 FRAME_OUTPUT_TYPE_COMBOS = [
     (frame, output_type)
     for frame in [primary_beam.AltAzFrame(),
-                  primary_beam.RADecFrame.from_parallactic_angle(40 * u.deg)]
+                  primary_beam.RADecFrame.from_parallactic_angle(40 * u.deg),
+                  primary_beam.RADecFrame.from_parallactic_angle([40, 80] * u.deg)]
     for output_type in primary_beam.OutputType
     if (isinstance(frame, primary_beam.RADecFrame)
         or output_type in {primary_beam.OutputType.JONES_HV,
@@ -570,6 +571,32 @@ def test_sample_unpolarized_power(
         l, m, frequency, frame, primary_beam.OutputType.UNPOLARIZED_POWER)
 
     np.testing.assert_allclose(unpol, mueller[..., 0, 0], atol=1e-5)
+
+
+@pytest.mark.parametrize('output_type', list(primary_beam.OutputType))
+def test_sample_radec_array_pa(
+        aperture_plane_model: primary_beam.PrimaryBeamAperturePlane,
+        output_type: primary_beam.OutputType) -> None:
+    model = aperture_plane_model
+    l = [-0.002, 0.001, 0.0, 0.0, 0.0]
+    m = [0.0, 0.02, 0.0, -0.03, 0.01]
+    frequency = [1.25, 1.5] * u.GHz
+    pa = [30, 40, 50, 60] * u.deg
+    frame = primary_beam.RADecFrame.from_parallactic_angle(pa)
+
+    expected = np.stack(
+        [
+            model.sample(
+                l, m, frequency,
+                primary_beam.RADecFrame.from_parallactic_angle(angle),
+                output_type
+            )
+            for angle in pa
+        ],
+        axis=1
+    )
+    out = model.sample(l, m, frequency, frame, output_type)
+    np.testing.assert_allclose(out, expected, atol=1e-5)
 
 
 @pytest.mark.parametrize(
