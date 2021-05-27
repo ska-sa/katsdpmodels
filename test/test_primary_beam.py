@@ -40,7 +40,7 @@ import katsdpmodels.fetch.requests as fetch_requests
 FRAME_OUTPUT_TYPE_COMBOS = [
     (frame, output_type)
     for frame in [primary_beam.AltAzFrame(),
-                  primary_beam.RADecFrame(parallactic_angle=40 * u.deg)]
+                  primary_beam.RADecFrame.from_parallactic_angle(40 * u.deg)]
     for output_type in primary_beam.OutputType
     if (isinstance(frame, primary_beam.RADecFrame)
         or output_type in {primary_beam.OutputType.JONES_HV,
@@ -349,7 +349,7 @@ def test_sample_lm_broadcast(aperture_plane_model: primary_beam.PrimaryBeamApert
     # Also check with RADecFrame
     actual = aperture_plane_model.sample(
         -l[np.newaxis, :], m[:, np.newaxis], frequency,
-        primary_beam.RADecFrame(0 * u.deg),
+        primary_beam.RADecFrame.from_parallactic_angle(0 * u.deg),
         primary_beam.OutputType.JONES_HV)
     np.testing.assert_allclose(actual, expected, atol=1e-7)
 
@@ -514,7 +514,7 @@ def test_samples_jones_xy(aperture_plane_model: primary_beam.PrimaryBeamAperture
     # Use at least one dimension in frequency to check that tensor products use
     # the right axes.
     frequency = [1.25, 1.5] * u.GHz
-    frame = primary_beam.RADecFrame(30 * u.deg)
+    frame = primary_beam.RADecFrame.from_parallactic_angle(30 * u.deg)
 
     out_hv = model.sample(
         l, m, frequency, frame, primary_beam.OutputType.JONES_HV)
@@ -538,7 +538,7 @@ def test_sample_mueller(aperture_plane_model: primary_beam.PrimaryBeamAperturePl
     # Use at least one dimension in frequency to check that tensor products use
     # the right axes.
     frequency = [1.25, 1.5] * u.GHz
-    frame = primary_beam.RADecFrame(30 * u.deg)
+    frame = primary_beam.RADecFrame.from_parallactic_angle(30 * u.deg)
 
     mueller = model.sample(l, m, frequency, frame, primary_beam.OutputType.MUELLER)
     B = voltages @ voltages.T.conj()            # Matrix of [[XX, XY], [YX, YY]]
@@ -562,7 +562,7 @@ def test_sample_unpolarized_power(
     l = [-0.002, 0.001, 0.0, 0.0, 0.0]
     m = [0.0, 0.02, 0.0, -0.03, 0.01]
     frequency = [1.25, 1.5] * u.GHz
-    frame = primary_beam.RADecFrame(parallactic_angle=30 * u.deg)
+    frame = primary_beam.RADecFrame.from_parallactic_angle(30 * u.deg)
 
     mueller = model.sample(
         l, m, frequency, frame, primary_beam.OutputType.MUELLER)

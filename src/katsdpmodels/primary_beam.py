@@ -78,6 +78,10 @@ class RADecFrame:
     topocentric frames, but it's ignored as it is typically much smaller than
     features of the primary beam.
 
+    This class should not be constructed directly, as the constructor
+    signature is subject to change in future. Use the factory methods
+    such as :meth:`from_parallactic_angle` and :meth:`from_sky_coord`.
+
     Parameters
     ----------
     parallactic_angle
@@ -108,6 +112,11 @@ class RADecFrame:
         return np.array([[s, c], [-c, s]])
 
     @classmethod
+    def from_parallactic_angle(cls, parallactic_angle: u.Quantity) -> 'RADecFrame':
+        """Generate a frame from a parallactic angle."""
+        return cls(parallactic_angle)
+
+    @classmethod
     def from_sky_coord(cls, target: SkyCoord) -> 'RADecFrame':
         """Generate a frame from a target (assuming an AltAz mount).
 
@@ -131,7 +140,7 @@ class RADecFrame:
         pa = target.altaz.position_angle(pole.altaz)
         if sign == -1:
             pa += np.pi * u.rad
-        return cls(pa)
+        return cls.from_parallactic_angle(pa)
 
 
 class OutputType(enum.Enum):
