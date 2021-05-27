@@ -703,8 +703,8 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
             lm = frame.lm_to_hv() @ lm
             # Unpack again. If frame is vectorised, the rest will have extra
             # leading dimensions.
-            l_ = lm[0].reshape(frame.shape + l_.shape)
-            m_ = lm[1].reshape(frame.shape + m_.shape)
+            l_ = lm[..., 0, :].reshape(frame.shape + l_.shape)
+            m_ = lm[..., 1, :].reshape(frame.shape + m_.shape)
         elif not isinstance(frame, AltAzFrame):
             raise TypeError(f'frame must be RADecFrame or AltAzFrame, not {type(frame)}')
         l_ = _asarray(l_, np.float32)
