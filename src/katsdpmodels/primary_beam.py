@@ -17,7 +17,7 @@
 """Primary beam models."""
 
 import enum
-from typing import Tuple, ClassVar, Union, Optional, Type, TypeVar, Any
+from typing import List, Tuple, ClassVar, Union, Optional, Type, TypeVar, Any
 from typing_extensions import Literal
 
 import numpy as np
@@ -53,6 +53,24 @@ _IQUV_TO_XY = np.array(
 _XY_TO_IQUV = np.linalg.inv(_IQUV_TO_XY)
 
 
+def _block_matrix(blocks: List[List[ArrayLike]]) -> np.ndarray:
+    """Construct an array of matrices from an array per entry.
+
+    For example::
+
+        _block_matrix([[cos(a), sin(a)], [-sin(a), cos(a)]])
+
+    will compute a rotation matrix if `a` is scalar but an array of rotation
+    matrices if `a` is an array (with the dimensions of `a` being the leading
+    ones).
+    """
+    blocks = [
+        [np.asarray(a)[..., np.newaxis, np.newaxis] for a in row]
+        for row in blocks
+    ]
+    return np.block(blocks)
+
+
 class AltAzFrame:
     """Coordinate system aligned with the antenna.
 
@@ -61,6 +79,18 @@ class AltAzFrame:
     altitude. Both are defined by an orthographic (SIN) projection, with the
     nominal pointing centre at zero.
     """
+
+    @property
+    def shape(self) -> Tuple[int, ...]:
+        return ()
+
+    @property
+    def ndim(self) -> int:
+        return 0
+
+    @property
+    def size(self) -> int:
+        return 1
 
 
 class RADecFrame:
@@ -98,18 +128,30 @@ class RADecFrame:
         s = np.sin(self.parallactic_angle)
         # Note: this is reflected rotation matrix, because RADec and AltAz
         # have opposite handedness.
-        return np.array([[-c, s], [s, c]])
+        return _block_matrix([[-c, s], [s, c]])
 
     def jones_hv_to_xy(self) -> np.ndarray:
         """Jones matrix that converts voltages from HV to XY.
 
         See :class:`OutputType` for further clarification.
         """
-        c = np.cos(self.parallactic_angle)
-        s = np.sin(self.parallactic_angle)
+        c = np.cos(self.parallactic_angle).astype(np.float32, copy=False)
+        s = np.sin(self.parallactic_angle).astype(np.float32, copy=False)
         # No handedness change, but H aligns with X and V with Y at a
         # PA of 90°.
-        return np.array([[s, c], [-c, s]])
+        return _block_matrix([[s, c], [-c, s]])
+
+    @property
+    def shape(self) -> Tuple[int, ...]:
+        return self.parallactic_angle.shape
+
+    @property
+    def ndim(self) -> int:
+        return self.parallactic_angle.ndim
+
+    @property
+    def size(self) -> int:
+        return self.parallactic_angle.size
 
     @classmethod
     def from_parallactic_angle(cls, parallactic_angle: u.Quantity) -> 'RADecFrame':
@@ -273,10 +315,13 @@ class PrimaryBeam(models.SimpleHDF5Model):
         """Sample the primary beam.
 
         A sample is returned for each combination of a position (given by `l`,
-        `m`) with a frequency. The dimensions of the output will be first those
-        of `frequency`, then those of `m` and `l` (which are broadcast with
-        each other), and finally the row and column for matrices if
-        `output_type` is one of the matrix types.
+        `m`) with a frequency. The dimensions of the output will be (in
+        order):
+        - those of `frequency`
+        - those of `frame` (for :class:`RADecFrame`)
+        - those of `m` and `l` (which are broadcast with each other)
+        - the row and column for matrices if `output_type` is one of the matrix
+          types.
 
         Parameters
         ----------
@@ -485,23 +530,37 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
     def band(self) -> str:
         return self._band
 
-    def _prepare_samples(self, frequency: u.Quantity,
-                         frame: Union[AltAzFrame, RADecFrame],
-                         output_type: OutputType) -> np.ndarray:
+    def _prepare_samples(self, frequency: u.Quantity) -> np.ndarray:
         """Interpolate aperture plane to selected frequencies, and optionally rotate."""
         frequency_Hz = frequency.to_value(u.Hz).astype(np.float32, copy=False, casting='same_kind')
         samples = self._interp_samples(frequency_Hz)
-        if output_type in {OutputType.JONES_XY, OutputType.MUELLER}:
-            if not isinstance(frame, RADecFrame):
-                raise ValueError('JONES_XY required a RADecFrame')
-            jones = frame.jones_hv_to_xy().astype(np.complex64, copy=False)
-            # Matrix multiply, but tensordot/matmul would require shuffling
-            # the axes around. The Jones dimensions are axes -4 and -3 on both
-            # the input and output (i, j and k refer to the axes involved in
-            # the matrix multiply).
-            # TODO: see if it's faster to move into Numba inner loop.
-            samples = np.einsum('ij,...jkxy->...ikxy', jones, samples)
         return samples
+
+    @staticmethod
+    @numba.njit
+    def _apply_jones(values: np.ndarray, jones: np.ndarray) -> None:
+        """Apply Jones matrices to rotate HV to XY.
+
+        The last four dimensions of `values` must correspond to
+        - The frame
+        - l/m
+        - Jones matrices
+
+        `jones` must be 3D, with the first dimension corresponding to the frame.
+
+        The results are updated in place.
+        """
+        tmp = np.empty((2, 2), values.dtype)
+        for idx in np.ndindex(values.shape[:-2]):
+            m = values[idx]
+            cur = jones[idx[-2]]
+            # Do the matrix multiply. Numba's implementation of @ fails to
+            # compile because it wants the dtype to match and we're doing
+            # real * complex.
+            for i in range(2):
+                for j in range(2):
+                    tmp[i, j] = cur[i, 0] * m[0, j] + cur[i, 1] * m[1, j]
+            m[()] = tmp
 
     @staticmethod
     def _finalize(values: np.ndarray, output_type: OutputType,
@@ -561,7 +620,7 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
                 for j in range(2):
                     tmp = coeff2 @ ap[i, j]
                     out_chunk = out[freq_idx + (...,) + (i, j)]
-                    for lm_idx in np.ndindex(l.shape):
+                    for lm_idx in range(l.shape[0]):
                         out_chunk[lm_idx] = np.dot(tmp[lm_idx], coeff1[lm_idx])
 
     def _sample_altaz_jones(
@@ -596,7 +655,7 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         # copying.
         out_view = out.view()
         out_view.shape = frequency.shape + (l.size, 2, 2)
-        samples = self._prepare_samples(frequency, frame, output_type)
+        samples = self._prepare_samples(frequency)
         self._sample_impl(samples, xf, yf, l.ravel(), m.ravel(), out_view)
 
         # Check if there are any points that may lie outside the valid l/m
@@ -616,6 +675,14 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
             invalid = invalid[..., np.newaxis, np.newaxis]
             np.copyto(out, np.nan, where=invalid)
 
+        # Convert Jones matrices from HV basis to XY if needed
+        if output_type not in {OutputType.JONES_HV, OutputType.UNPOLARIZED_POWER}:
+            out_view = out.view()
+            out_view.shape = frequency.shape + (frame.size, l.size // frame.size, 2, 2)
+            if not isinstance(frame, RADecFrame):
+                raise ValueError('JONES_XY requires a RADecFrame')
+            jones = frame.jones_hv_to_xy().reshape((-1, 2, 2))
+            self._apply_jones(out_view, jones)
         return out
 
     def sample(self, l: ArrayLike, m: ArrayLike, frequency: u.Quantity,   # noqa: E741
@@ -636,9 +703,10 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
             lm = np.stack([l_.ravel(), m_.ravel()], axis=0)
             # Convert to AltAz frame
             lm = frame.lm_to_hv() @ lm
-            # Unpack again
-            l_ = lm[0].reshape(l_.shape)
-            m_ = lm[1].reshape(m_.shape)
+            # Unpack again. If frame is vectorised, the rest will have extra
+            # leading dimensions.
+            l_ = lm[0].reshape(frame.shape + l_.shape)
+            m_ = lm[1].reshape(frame.shape + m_.shape)
         elif not isinstance(frame, AltAzFrame):
             raise TypeError(f'frame must be RADecFrame or AltAzFrame, not {type(frame)}')
         l_ = _asarray(l_, np.float32)
@@ -688,7 +756,7 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         y_m = _asarray(self.y.to_value(u.m), np.float32)
         wavenumber = frequency.to('m^-1', equivalencies=u.spectral())
         wavenumber_m = _asarray(wavenumber.value, np.float32)
-        samples = self._prepare_samples(frequency, AltAzFrame(), OutputType.JONES_HV)
+        samples = self._prepare_samples(frequency)
         out_shape = frequency.shape + m.shape + l.shape + (2, 2)
         if out is None:
             out = np.empty(out_shape, np.complex64)
@@ -720,7 +788,6 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
                     frame: Union[AltAzFrame, RADecFrame],
                     output_type: OutputType, *,
                     out: Optional[np.ndarray] = None) -> np.ndarray:
-        # This is a completely unoptimised placeholder implementation.
         l_ = _asarray(l, np.float32)
         m_ = _asarray(m, np.float32)
         if l_.ndim != 1 or m_.ndim != 1:
