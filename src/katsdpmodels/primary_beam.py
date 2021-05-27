@@ -321,7 +321,7 @@ class PrimaryBeam(models.SimpleHDF5Model):
         :code:`sample(l[np.newaxis, :], m[:, np.newaxis], ...)`, but may be
         significantly faster (depending on the implementation), and is not
         guaranteed to give bit-identical results. This advantage may be lost
-        when using :class:`AltAzFrame` with a non-zero parallactic angle.
+        when using :class:`RADecFrame` with a non-zero parallactic angle.
 
         The grid need not be regularly spaced, but an output is generated for
         each combination of `l`, `m` and `frequency`.
