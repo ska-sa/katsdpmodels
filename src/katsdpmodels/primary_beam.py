@@ -17,6 +17,7 @@
 """Primary beam models."""
 
 import enum
+import operator
 from typing import List, Tuple, ClassVar, Union, Optional, Type, TypeVar, Any
 from typing_extensions import Literal
 
@@ -30,6 +31,7 @@ import numba
 import scipy.interpolate
 import astropy.units as u
 from astropy.coordinates import SkyCoord
+from astropy.utils import ShapedLikeNDArray
 import h5py
 
 from . import models
@@ -71,7 +73,7 @@ def _block_matrix(blocks: List[List[ArrayLike]]) -> np.ndarray:
     return np.block(blocks)
 
 
-class AltAzFrame:
+class AltAzFrame(ShapedLikeNDArray):
     """Coordinate system aligned with the antenna.
 
     The l coordinate is horizontal and increases with increasing azimuth (north
@@ -84,16 +86,11 @@ class AltAzFrame:
     def shape(self) -> Tuple[int, ...]:
         return ()
 
-    @property
-    def ndim(self) -> int:
-        return 0
-
-    @property
-    def size(self) -> int:
-        return 1
+    def _apply(self, method, *args, **kwargs) -> 'AltAzFrame':
+        return self
 
 
-class RADecFrame:
+class RADecFrame(ShapedLikeNDArray):
     """Coordinate system aligned with a celestial sphere.
 
     The l coordinate is aligned with right ascension and the m coordinate with
@@ -145,13 +142,14 @@ class RADecFrame:
     def shape(self) -> Tuple[int, ...]:
         return self.parallactic_angle.shape
 
-    @property
-    def ndim(self) -> int:
-        return self.parallactic_angle.ndim
-
-    @property
-    def size(self) -> int:
-        return self.parallactic_angle.size
+    def _apply(self, method, *args, **kwargs) -> 'RADecFrame':
+        # This is based on astropy.time.Time
+        if callable(method):
+            def apply_method(array):
+                return method(array, *args, **kwargs)
+        else:
+            apply_method = operator.methodcaller(method, *args, **kwargs)
+        return self.from_parallactic_angle(apply_method(self.parallactic_angle))
 
     @classmethod
     def from_parallactic_angle(cls, parallactic_angle: u.Quantity) -> 'RADecFrame':
