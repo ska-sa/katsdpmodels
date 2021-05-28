@@ -30,7 +30,7 @@ Example
 While katsdpmodels doesn't yet support primary beam models, we'll use it for
 an example because it's a complex case that demonstrates multiple aspects of
 the design. Consider a primary beam model for the UHF receiver on antenna
-m012. For simplicity, we’ll assume the configuration depends only on the dish
+m012. For simplicity, we'll assume the configuration depends only on the dish
 and the receiver, with no other versioning. Then the initial setup as aliases
 may be as seen in the left side of the figure below. After an observation has
 been run, the telescope state (as serialized to the :file:`.rdb` file) appears on
@@ -73,6 +73,10 @@ RFI mask
 
 Band mask
     :samp:`{acv}_model_band_mask_{type}`
+
+Primary beam
+    :samp:`{acv}_{antenna}_model_primary_beam_{group}_{type}`, where
+    :samp:`{group}` is one of ``individual`` or ``cohort``.
 
 API
 ---
