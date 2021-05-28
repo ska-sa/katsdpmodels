@@ -16,7 +16,7 @@
 
 """Local Sky Models"""
 
-from typing import ClassVar, Any, Union
+from typing import ClassVar, Any, Union, TypeVar, Type
 from typing_extensions import Literal
 
 try:
@@ -26,9 +26,18 @@ except ImportError:
 
 import astropy.units as u
 import h5py
+import logging
 import katdal, katpoint, katsdptelstate
 
 from . import models
+
+logger = logging.getLogger(__name__)
+
+_C = TypeVar('_C', bound='ComponentSkyModel')
+
+class NoSkyModelError(Exception):
+    """Attempted to load a sky model for continuum subtraction but there isn't one"""
+    pass
 
 class LocalSkyModel(models.SimpleHDF5Model):
     """ Base class for sky models """
@@ -103,20 +112,17 @@ def catalogue_from_telstate(telstate: Union[katsdptelstate.TelescopeState, katda
     raise NoSkyModelError('Sky model for target {} not found'.format(target.name))
 
 class ComponentSkyModel(LocalSkyModel):
-    model_format: ClassVar[Literal['ranges']] = 'skymodel'
+    model_format: ClassVar[Literal['skymodel']] = 'skymodel'
 
     def __init__(self):
         super().__init__()
 
     @classmethod
-    def from_hdf5(cls: Type[_P], hdf5: h5py.File) -> _P:
+    def from_hdf5(cls: Type[_C], hdf5: h5py.File) -> _C:
         cat = models.get_hdf5_dataset(hdf5, 'catalogue')
-
         return cls(cat)
 
     def to_hdf5(self, hdf5: h5py.File) -> None:
-        hdf5.attrs['TODO: attributes'] = self.PROPERTIES
+        hdf5.attrs['TODO: attributes'] = self.ATTRIBUTES
         # The constructor ensures we're using unscaled units
         hdf5.create_dataset('cat', data=self.cat, track_times=False)
-
-
