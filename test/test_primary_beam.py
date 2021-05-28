@@ -19,7 +19,7 @@
 import contextlib
 import io
 import pathlib
-from typing import Generator, Any, Union, Optional, cast
+from typing import Generator, Any, Union, Optional, Iterable, cast
 
 import astropy.units as u
 from astropy import constants
@@ -550,7 +550,6 @@ def test_sample_mueller(aperture_plane_model: primary_beam.PrimaryBeamAperturePl
     obs_voltages = xy @ voltages
     vis = obs_voltages @ obs_voltages.swapaxes(-1, -2).conj()  # Matrix of [[XX, XY], [YX, YY]]
     vis = vis.reshape(vis.shape[:-2] + (4,))    # Flatten to [XX, XY, YX, YY]
-    print(vis.shape)
     # Treat vis as a stack of vectors to multiply by the matrix
     vis = np.tensordot(vis, primary_beam._XY_TO_IQUV, axes=((-1,), (-1,)))
 
@@ -573,30 +572,72 @@ def test_sample_unpolarized_power(
     np.testing.assert_allclose(unpol, mueller[..., 0, 0], atol=1e-5)
 
 
+def _test_sample_radec_array(
+        model: primary_beam.PrimaryBeamAperturePlane,
+        output_type: primary_beam.OutputType,
+        vector_frame: primary_beam.RADecFrame,
+        scalar_frames: Iterable[primary_beam.RADecFrame]) -> None:
+    """Test that a vectorised RADecFrame gives the same results as individual scalar frames."""
+    l = [-0.002, 0.001, 0.0, 0.0, 0.0]
+    m = [0.0, 0.02, 0.0, -0.03, 0.01]
+    frequency = [1.25, 1.5] * u.GHz
+
+    expected = np.stack(
+        [model.sample(l, m, frequency, frame, output_type) for frame in scalar_frames],
+        axis=1
+    )
+    out = model.sample(l, m, frequency, vector_frame, output_type)
+    np.testing.assert_allclose(out, expected, atol=1e-5)
+
+
 @pytest.mark.parametrize('output_type', list(primary_beam.OutputType))
 def test_sample_radec_array_pa(
         aperture_plane_model: primary_beam.PrimaryBeamAperturePlane,
         output_type: primary_beam.OutputType) -> None:
-    model = aperture_plane_model
-    l = [-0.002, 0.001, 0.0, 0.0, 0.0]
-    m = [0.0, 0.02, 0.0, -0.03, 0.01]
-    frequency = [1.25, 1.5] * u.GHz
     pa = [30, 40, 50, 60] * u.deg
-    frame = primary_beam.RADecFrame.from_parallactic_angle(pa)
+    vector_frame = primary_beam.RADecFrame.from_parallactic_angle(pa)
+    scalar_frames = [primary_beam.RADecFrame.from_parallactic_angle(angle) for angle in pa]
+    _test_sample_radec_array(aperture_plane_model, output_type, vector_frame, scalar_frames)
 
-    expected = np.stack(
-        [
-            model.sample(
-                l, m, frequency,
-                primary_beam.RADecFrame.from_parallactic_angle(angle),
-                output_type
-            )
-            for angle in pa
-        ],
-        axis=1
-    )
-    out = model.sample(l, m, frequency, frame, output_type)
-    np.testing.assert_allclose(out, expected, atol=1e-5)
+
+@pytest.mark.parametrize('output_type', list(primary_beam.OutputType))
+def test_sample_radec_array_sky_coord_obstime(
+        aperture_plane_model: primary_beam.PrimaryBeamAperturePlane,
+        output_type: primary_beam.OutputType) -> None:
+    location = EarthLocation.from_geodetic(18 * u.deg, lat=-30 * u.deg, height=100 * u.m)
+    obstime = Time([
+        '2021-04-22T13:00:00Z',
+        '2021-04-22T14:00:00Z',
+        '2021-04-22T15:00:00Z'
+    ])
+    ra = 10 * u.hour
+    dec = -20 * u.deg
+    coord = SkyCoord(ra=ra, dec=dec, obstime=obstime, location=location)
+    vector_frame = primary_beam.RADecFrame.from_sky_coord(coord)
+    scalar_frames = [
+        primary_beam.RADecFrame.from_sky_coord(
+            SkyCoord(ra=ra, dec=dec, obstime=t, location=location)
+        )
+        for t in obstime
+    ]
+    _test_sample_radec_array(aperture_plane_model, output_type, vector_frame, scalar_frames)
+
+
+@pytest.mark.parametrize('output_type', list(primary_beam.OutputType))
+def test_sample_radec_array_sky_coord_radec(
+        aperture_plane_model: primary_beam.PrimaryBeamAperturePlane,
+        output_type: primary_beam.OutputType) -> None:
+    location = EarthLocation.from_geodetic(18 * u.deg, lat=-30 * u.deg, height=100 * u.m)
+    obstime = Time('2021-04-22T13:00:00Z')
+    ra = [10, 5, 7] * u.hour
+    dec = [-20, 0, 5] * u.deg
+    coord = SkyCoord(ra=ra, dec=dec, obstime=obstime, location=location)
+    vector_frame = primary_beam.RADecFrame.from_sky_coord(coord)
+    scalar_frames = [
+        primary_beam.RADecFrame.from_sky_coord(s)
+        for s in coord
+    ]
+    _test_sample_radec_array(aperture_plane_model, output_type, vector_frame, scalar_frames)
 
 
 @pytest.mark.parametrize(
