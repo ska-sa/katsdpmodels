@@ -4,12 +4,13 @@ aiohttp
 aiohttp-retry
 astropy
 h5py
-katdal
-katpoint
-katsdptelstate
 numba
 numpy
 requests
 scipy
 strict-rfc3339
 typing-extensions
+
+katdal @ git+https://github.com/ska-sa/katdal
+katpoint @ git+https://github.com/ska-sa/katpoint
+katsdptelstate[rdb] @ git+https://github.com/ska-sa/katsdptelstate
