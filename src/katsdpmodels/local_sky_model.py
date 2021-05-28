@@ -26,7 +26,7 @@ except ImportError:
 
 import astropy.units as u
 import h5py
-import telstate
+import katdal, katpoint, katsdptelstate
 
 from . import models
 
@@ -105,7 +105,8 @@ def catalogue_from_telstate(telstate: Union[katsdptelstate.TelescopeState, katda
 class ComponentSkyModel(LocalSkyModel):
     model_format: ClassVar[Literal['ranges']] = 'skymodel'
 
-    def __init__(self,):
+    def __init__(self):
+        super().__init__()
 
     @classmethod
     def from_hdf5(cls: Type[_P], hdf5: h5py.File) -> _P:

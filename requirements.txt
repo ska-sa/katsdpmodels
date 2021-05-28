@@ -4,6 +4,9 @@ aiohttp
 aiohttp-retry
 astropy
 h5py
+katdal
+katpoint
+katsdptelstate
 numba
 numpy
 requests
