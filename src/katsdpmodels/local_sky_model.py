@@ -24,10 +24,12 @@ try:
 except ImportError:
     ArrayLike = Any  # type: ignore
 
-import astropy.units as u
+# import astropy.units as u
 import h5py
 import logging
-import katdal, katpoint, katsdptelstate
+import katdal
+import katpoint
+import katsdptelstate
 
 from . import models
 
@@ -35,24 +37,29 @@ logger = logging.getLogger(__name__)
 
 _C = TypeVar('_C', bound='ComponentSkyModel')
 
+
 class NoSkyModelError(Exception):
     """Attempted to load a sky model for continuum subtraction but there isn't one"""
     pass
 
+
 class LocalSkyModel(models.SimpleHDF5Model):
     """ Base class for sky models """
     model_type: ClassVar[Literal['lsm']] = 'lsm'
+
     # Methods are not marked @abstractmethod as it causes issues with mypy:
     # https://github.com/python/mypy/issues/4717
 
     @classmethod
     def from_hdf5(cls, hdf5: h5py.File) -> 'LocalSkyModel':
-        raise NotImplementedError()      # pragma: nocover
+        raise NotImplementedError()  # pragma: nocover
 
     def to_hdf5(self, hdf5: h5py.File) -> None:
-        raise NotImplementedError()      # pragma: nocover
+        raise NotImplementedError()  # pragma: nocover
 
-def catalogue_from_telstate(telstate: Union[katsdptelstate.TelescopeState, katdal.sensordata.TelstateToStr],
+
+def catalogue_from_telstate(telstate: Union[katsdptelstate.TelescopeState,
+                                            katdal.sensordata.TelstateToStr],
                             capture_block_id: str,
                             continuum: Union[str, None],
                             target: katpoint.Target) -> katpoint.Catalogue:
@@ -111,10 +118,12 @@ def catalogue_from_telstate(telstate: Union[katsdptelstate.TelescopeState, katda
         logger.debug('KeyError', exc_info=True)
     raise NoSkyModelError('Sky model for target {} not found'.format(target.name))
 
+
 class ComponentSkyModel(LocalSkyModel):
     model_format: ClassVar[Literal['skymodel']] = 'skymodel'
 
-    def __init__(self):
+    def __init__(self, cat):
+        self.cat = cat
         super().__init__()
 
     @classmethod
@@ -123,6 +132,5 @@ class ComponentSkyModel(LocalSkyModel):
         return cls(cat)
 
     def to_hdf5(self, hdf5: h5py.File) -> None:
-        hdf5.attrs['TODO: attributes'] = self.ATTRIBUTES
-        # The constructor ensures we're using unscaled units
+        hdf5.attrs['cat'] = self.cat
         hdf5.create_dataset('cat', data=self.cat, track_times=False)
