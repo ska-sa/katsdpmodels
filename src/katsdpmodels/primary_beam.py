@@ -169,17 +169,12 @@ class RADecFrame(ShapedLikeNDArray):
         # the transformation to AzEl is not rigid (does not preserve great
         # circles).
         target_icrs = target.icrs
-        if target_icrs.dec > 0:
-            sign = -1
-        else:
-            sign = 1
+        sign = np.where(target_icrs.dec > 0, -1, 1)
         pole = target_icrs.directional_offset_by(0 * u.rad, sign * 1e-5 * u.rad)
         # directional_offset_by doesn't preserve these extra attributes
-        pole.obstime = target_icrs.obstime
-        pole.location = target_icrs.location
+        pole = SkyCoord(pole, obstime=target_icrs.obstime, location=target_icrs.location)
         pa = target.altaz.position_angle(pole.altaz)
-        if sign == -1:
-            pa += np.pi * u.rad
+        pa += np.where(sign == -1, np.pi * u.rad, 0)
         return cls.from_parallactic_angle(pa)
 
 
