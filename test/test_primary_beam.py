@@ -41,7 +41,7 @@ FRAME_OUTPUT_TYPE_COMBOS = [
     (frame, output_type)
     for frame in [primary_beam.AltAzFrame(),
                   primary_beam.RADecFrame.from_parallactic_angle(40 * u.deg),
-                  primary_beam.RADecFrame.from_parallactic_angle([40, 80] * u.deg)]
+                  primary_beam.RADecFrame.from_parallactic_angle([[40], [80]] * u.deg)]
     for output_type in primary_beam.OutputType
     if (isinstance(frame, primary_beam.RADecFrame)
         or output_type in {primary_beam.OutputType.JONES_HV,
@@ -586,7 +586,7 @@ def _test_sample_radec_array(
         [model.sample(l, m, frequency, frame, output_type) for frame in scalar_frames],
         axis=1
     )
-    out = model.sample(l, m, frequency, vector_frame, output_type)
+    out = model.sample(l, m, frequency, vector_frame[:, np.newaxis], output_type)
     np.testing.assert_allclose(out, expected, atol=1e-5)
 
 
@@ -658,6 +658,8 @@ def test_sample_grid(
     l = [-0.002, 0.001, 0.0, 0.0, 0.0, 0.3]
     m = [0.0, 0.02, -0.6, -0.03, 0.01, 0.2]
 
+    # Ensure array axes in frame are orthogonal to l, m
+    frame = frame[..., np.newaxis, np.newaxis]
     actual = model.sample_grid(l, m, frequency, frame, output_type)
     expected = model.sample(
         np.array(l)[np.newaxis, :], np.array(m)[:, np.newaxis], frequency,

@@ -311,8 +311,7 @@ class PrimaryBeam(models.SimpleHDF5Model):
         `m`) with a frequency. The dimensions of the output will be (in
         order):
         - those of `frequency`
-        - those of `frame` (for :class:`RADecFrame`)
-        - those of `m` and `l` (which are broadcast with each other)
+        - those of `l`, `m` and `frame` (which are broadcast with each other)
         - the row and column for matrices if `output_type` is one of the matrix
           types.
 
@@ -531,29 +530,23 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
 
     @staticmethod
     @numba.njit
-    def _apply_jones(values: np.ndarray, jones: np.ndarray) -> None:
+    def _apply_jones(jones: np.ndarray, values: np.ndarray) -> None:
         """Apply Jones matrices to rotate HV to XY.
 
-        The last four dimensions of `values` must correspond to
-        - The frame
-        - l/m
-        - Jones matrices
-
-        `jones` must be 3D, with the first dimension corresponding to the frame.
-
-        The results are updated in place.
+        The last two dimensions of both `jones` and `values` correspond to 2x2
+        matrices. The values are updated in place with the products.
         """
         tmp = np.empty((2, 2), values.dtype)
         for idx in np.ndindex(values.shape[:-2]):
-            m = values[idx]
-            cur = jones[idx[-2]]
+            a = jones[idx]
+            b = values[idx]
             # Do the matrix multiply. Numba's implementation of @ fails to
             # compile because it wants the dtype to match and we're doing
-            # real * complex.
+            # real @ complex.
             for i in range(2):
                 for j in range(2):
-                    tmp[i, j] = cur[i, 0] * m[0, j] + cur[i, 1] * m[1, j]
-            m[()] = tmp
+                    tmp[i, j] = a[i, 0] * b[0, j] + a[i, 1] * b[1, j]
+            b[()] = tmp
 
     @staticmethod
     def _finalize(values: np.ndarray, output_type: OutputType,
@@ -670,12 +663,12 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
 
         # Convert Jones matrices from HV basis to XY if needed
         if output_type not in {OutputType.JONES_HV, OutputType.UNPOLARIZED_POWER}:
-            out_view = out.view()
-            out_view.shape = frequency.shape + (frame.size, l.size // frame.size, 2, 2)
             if not isinstance(frame, RADecFrame):
-                raise ValueError('JONES_XY requires a RADecFrame')
-            jones = frame.jones_hv_to_xy().reshape((-1, 2, 2))
-            self._apply_jones(out_view, jones)
+                raise ValueError(f'{output_type.name} requires a RADecFrame')
+            jones = frame.jones_hv_to_xy()
+            jones = np.broadcast_to(jones, l.shape + (2, 2))   # Broadcast with l
+            jones = np.broadcast_to(jones, out.shape)  # Add dimensions for frequency
+            self._apply_jones(jones, out)
         return out
 
     def sample(self, l: ArrayLike, m: ArrayLike, frequency: u.Quantity,   # noqa: E741
@@ -692,14 +685,10 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         l_.flags.writeable = False
         m_.flags.writeable = False
         if isinstance(frame, RADecFrame):
-            # Form a matrix with just two rows
-            lm = np.stack([l_.ravel(), m_.ravel()], axis=0)
-            # Convert to AltAz frame
-            lm = frame.lm_to_hv() @ lm
-            # Unpack again. If frame is vectorised, the rest will have extra
-            # leading dimensions.
-            l_ = lm[..., 0, :].reshape(frame.shape + l_.shape)
-            m_ = lm[..., 1, :].reshape(frame.shape + m_.shape)
+            lm = np.stack([l_, m_], axis=0)
+            transform = frame.lm_to_hv()
+            # Apply matrix-vector multiplication (with broadcasting)
+            l_, m_ = np.einsum('...ij,j...->i...', transform, lm)
         elif not isinstance(frame, AltAzFrame):
             raise TypeError(f'frame must be RADecFrame or AltAzFrame, not {type(frame)}')
         l_ = _asarray(l_, np.float32)
