@@ -16,7 +16,7 @@
 
 """Local Sky Models"""
 
-from typing import ClassVar, Any, Union, TypeVar, Type
+from typing import ClassVar, Any, Union, TypeVar, Type, Optional
 from typing_extensions import Literal
 
 from katsdpmodels.primary_beam import PrimaryBeam
@@ -121,21 +121,22 @@ def catalogue_from_telstate(telstate: Union[katsdptelstate.TelescopeState,
         logger.debug('KeyError', exc_info=True)
     raise NoSkyModelError('Sky model for target {} not found'.format(target.name))
 
+
 class KatpointSkyModel(LocalSkyModel):
     model_format: ClassVar[Literal['katpoint_catalogue']] = 'katpoint_catalogue'
 
     def __init__(self, cat: katpoint.Catalogue, pb: Optional[PrimaryBeam]):
         self
         self._cat = cat
-        if pb: self._PBModel = pb
+        if pb:
+            self._PBModel = pb
         super().__init__()
 
     @property
-    def primaryBeamModel(self, pb[PrimaryBeam]) -> PrimaryBeam:
-        #check pb exists and is accessible
+    def primaryBeamModel(self, pb: PrimaryBeam) -> PrimaryBeam:
+        # check pb exists and is accessible
         self._PBModel = pb
         return self._PBModel
-
 
     @classmethod
     def from_hdf5(cls: Type[_C], hdf5: h5py.File) -> _C:
@@ -143,8 +144,9 @@ class KatpointSkyModel(LocalSkyModel):
         return cls(cat)
 
     def to_hdf5(self, hdf5: h5py.File) -> None:
-        hdf5.attrs['cat'] = self.cat
-        hdf5.create_dataset('cat', data=self.cat, track_times=False)
+        hdf5.attrs['cat'] = self._cat
+        hdf5.create_dataset('cat', data=self._cat, track_times=False)
+
 
 class ComponentSkyModel(LocalSkyModel):
     model_format: ClassVar[Literal['skymodel']] = 'skymodel'
@@ -152,7 +154,6 @@ class ComponentSkyModel(LocalSkyModel):
     def __init__(self, cat):
         self.cat = cat
         super().__init__()
-
 
     @classmethod
     def from_hdf5(cls: Type[_C], hdf5: h5py.File) -> _C:
