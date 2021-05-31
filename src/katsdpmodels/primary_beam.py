@@ -701,8 +701,12 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         m_ = _asarray(m)
         l_, m_ = np.broadcast_arrays(l_, m_)
         # numba seems to trigger a FutureWarning when it checks the writeable
-        # flag on these broadcast arrays. Suppress it by making them
-        # explicitly readonly.
+        # flag on these broadcast arrays. Suppress it by making them explicitly
+        # readonly. Explicitly take views so that we don't modify the input
+        # arrays (which could otherwise happen if the transformations above are
+        # no-ops).
+        l_ = l_.view()
+        m_ = m_.view()
         l_.flags.writeable = False
         m_.flags.writeable = False
         if isinstance(frame, RADecFrame):

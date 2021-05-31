@@ -355,6 +355,16 @@ def test_sample_lm_broadcast(aperture_plane_model: primary_beam.PrimaryBeamApert
     np.testing.assert_allclose(actual, expected, atol=1e-7)
 
 
+def test_sample_lm_np_flags(aperture_plane_model: primary_beam.PrimaryBeamAperturePlane) -> None:
+    """Check that flags on l and m arrays are not modified."""
+    l = np.array([0.01, 0.02])
+    m = np.array([0.03, 0.04])
+    aperture_plane_model.sample(
+        l, m, 1500 * u.MHz, primary_beam.AltAzFrame(), primary_beam.OutputType.JONES_HV)
+    assert l.flags.writeable
+    assert m.flags.writeable
+
+
 @pytest.mark.parametrize(
     'l, m, frequency',
     [
