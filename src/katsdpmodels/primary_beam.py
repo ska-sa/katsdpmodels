@@ -549,6 +549,27 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
             b[()] = tmp
 
     @staticmethod
+    @numba.njit
+    def _transform_lm(transform: np.ndarray, l: np.ndarray, m: np.ndarray) -> np.ndarray:
+        """Apply transformation matrices to l and m coordinates.
+
+        `transform` must contain a matrix for each (l, m) coordinate (with the
+        last dimensions being 2×2). The caller must broadcast if needed.
+
+        Returns
+        -------
+        lm
+            Array with size 2 on the leading dimension, corresponding to the
+            new l and m.
+        """
+        out = np.empty((2,) + l.shape, l.dtype)
+        for idx in np.ndindex(l.shape):
+            M = transform[idx]
+            out[0][idx] = M[0, 0] * l[idx] + M[0, 1] * m[idx]
+            out[1][idx] = M[1, 0] * l[idx] + M[1, 1] * m[idx]
+        return out
+
+    @staticmethod
     def _finalize(values: np.ndarray, output_type: OutputType,
                   out: Optional[np.ndarray]) -> np.ndarray:
         """Handle :data:`OutputType.MUELLER` and `OutputType.UNPOLARIZED_POWER`.
@@ -685,10 +706,14 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         l_.flags.writeable = False
         m_.flags.writeable = False
         if isinstance(frame, RADecFrame):
-            lm = np.stack([l_, m_], axis=0)
             transform = frame.lm_to_hv()
-            # Apply matrix-vector multiplication (with broadcasting)
-            l_, m_ = np.einsum('...ij,j...->i...', transform, lm)
+            # Broadcast transform with l, m
+            shape = np.broadcast_shapes(transform.shape[:-2], l_.shape)
+            l_, m_ = self._transform_lm(
+                np.broadcast_to(transform, shape + (2, 2)),
+                np.broadcast_to(l_, shape),
+                np.broadcast_to(m_, shape)
+            )
         elif not isinstance(frame, AltAzFrame):
             raise TypeError(f'frame must be RADecFrame or AltAzFrame, not {type(frame)}')
         l_ = _asarray(l_, np.float32)
