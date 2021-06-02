@@ -75,8 +75,9 @@ Band mask
     :samp:`{acv}_model_band_mask_{type}`
 
 Primary beam
-    :samp:`{acv}_{antenna}_model_primary_beam_{group}_{type}`, where
-    :samp:`{group}` is one of ``individual`` or ``cohort``.
+    :samp:`{acv}_model_primary_beam_{group}_{type}`, where
+    :samp:`{group}` is one of ``individual`` or ``cohort``. This is an indexed
+    telescope state key, with the antenna name as the index.
 
 API
 ---
