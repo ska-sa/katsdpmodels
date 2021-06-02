@@ -59,7 +59,7 @@ target
     will benefit from having many antennas share the same model should use
     ``cohort``. For MeerKAT, ``cohort`` will ensure that all antennas share the
     same model, although this will not hold for the MeerKAT Extension as it has
-    heterogeneous dishes. The :samp:`{group}` is the single-letter abbreviation
+    heterogeneous dishes. The :samp:`{band}` is the single-letter abbreviation
     for the receiver band (``l``, ``s``, ``u`` or ``x``).
 
     Note that even if ``individual`` is requested, many or all of the antennas
