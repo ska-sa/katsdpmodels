@@ -11,8 +11,8 @@
     every join/.style={link}
 ]
 
-\node[file, on chain] (s3-current) {current/m012/u.alias};
-\node[file, on chain, join] (s3-config) {config/m012/u/rx17.alias};
+\node[file, on chain] (s3-current) {current/individual/m012/u.alias};
+\node[file, on chain, join] (s3-config) {config/individual/m012/u/rx17-2021.alias};
 \node[file, on chain] (s3-fixed) {fixed/sha256_0ae\ldots b9.h5};
 \node[file, on chain=going left, join=with s3-config] (s3-fixed-new)
   {fixed/sha256_d71\ldots 0a.h5};
@@ -20,8 +20,8 @@
       draw, label={Model store}] {};
 
 \node[right=of s3-config, start chain=ts going below, on chain] (ts-latest) {
-    \ldots m012_model_primary_beam_config};
-\node[on chain=ts] (ts-fixed) {\ldots m012_model_primary_beam_fixed};
+    \ldots model_primary_beam_individual_config[m012]};
+\node[on chain=ts] (ts-fixed) {\ldots model_primary_beam_individual_fixed[m012]};
 \node[fit={(ts-latest) (ts-fixed)}, draw, label=Telstate] {};
 \draw[link] (ts-latest) -- (s3-config);
 \draw[link] (ts-fixed) -- (s3-fixed);
