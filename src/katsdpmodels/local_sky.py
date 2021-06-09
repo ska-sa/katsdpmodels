@@ -32,6 +32,7 @@ import logging
 import katdal
 import katpoint
 import katsdptelstate
+import katsdpmodels.primary_beam
 
 from . import models
 
@@ -42,7 +43,12 @@ _K = TypeVar('_K', bound='KatpointSkyModel')
 
 
 class NoSkyModelError(Exception):
-    """Attempted to load a sky model for continuum subtraction but there isn't one"""
+    """Attempted to load a sky model for continuum subtraction but it does not exist at the specified location"""
+    pass
+
+
+class NoPrimaryBeamError(Exception):
+    """Attempted to get the associated primary Beam model but it hasn't been set"""
     pass
 
 
@@ -52,6 +58,11 @@ class LocalSkyModel(models.SimpleHDF5Model):
 
     # Methods are not marked @abstractmethod as it causes issues with mypy:
     # https://github.com/python/mypy/issues/4717
+
+    @property
+    def PBModel(self) -> PrimaryBeam:
+        """Minimum and maximum frequency covered by the model."""
+        raise NotImplementedError()      # pragma: nocover
 
     @classmethod
     def from_hdf5(cls, hdf5: h5py.File) -> 'LocalSkyModel':
@@ -126,21 +137,25 @@ class KatpointSkyModel(LocalSkyModel):
     model_format: ClassVar[Literal['katpoint_catalogue']] = 'katpoint_catalogue'
 
     def __init__(self, cat: katpoint.Catalogue, pb: Optional[PrimaryBeam]):
-        self
         self._cat = cat
         if pb:
-            self._primaryBeamModel = pb
+            self._PBModel = pb
         super().__init__()
 
     @property
-    def primaryBeamModel(self) -> PrimaryBeam:
-        return self._primaryBeamModel
+    def PBModel(self) -> PrimaryBeam:
+        if self._PBModel is None:
+            raise NoPrimaryBeamError
+        return self._PBModel
 
-    @primaryBeamModel.setter
-    def primaryBeamModel(self, pb: PrimaryBeam) -> PrimaryBeam:
-        # check PrimaryBeam is valid: assert (pb)
-        self._primaryBeamModel = pb
-        return pb
+    @PBModel.setter
+    def PBModel(self, pb: PrimaryBeam) -> None:
+        # check pb exists and is accessible
+        self._PBModel = pb
+
+    @classmethod
+    def from_katpoint_catalogue(cls: Type[_K], cat: katpoint.Catalogue) -> _K:
+        return cls(cat)
 
     @classmethod
     def from_hdf5(cls: Type[_K], hdf5: h5py.File) -> _K:
