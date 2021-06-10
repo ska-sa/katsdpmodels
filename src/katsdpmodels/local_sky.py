@@ -15,26 +15,27 @@
 ################################################################################
 
 """Local Sky Models"""
+from typing import Any, ClassVar, Optional, Type, TypeVar, Union
 
-from typing import ClassVar, Any, Union, TypeVar, Type, Optional
 from typing_extensions import Literal
-
-from katsdpmodels.primary_beam import PrimaryBeam
 
 try:
     from numpy.typing import ArrayLike
 except ImportError:
     ArrayLike = Any  # type: ignore
 
-# import astropy.units as u
-import h5py
 import logging
+import urllib
+
+import h5py
 import katdal
 import katpoint
 import katsdptelstate
-import katsdpmodels.primary_beam
+from katsdpmodels.primary_beam import PrimaryBeam
 
 from . import models
+
+# import astropy.units as u
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +56,6 @@ class NoPrimaryBeamError(Exception):
 class LocalSkyModel(models.SimpleHDF5Model):
     """ Base class for sky models """
     model_type: ClassVar[Literal['lsm']] = 'lsm'
-
     # Methods are not marked @abstractmethod as it causes issues with mypy:
     # https://github.com/python/mypy/issues/4717
 
@@ -131,6 +131,32 @@ def catalogue_from_telstate(telstate: Union[katsdptelstate.TelescopeState,
     except KeyError:
         logger.debug('KeyError', exc_info=True)
     raise NoSkyModelError('Sky model for target {} not found'.format(target.name))
+
+def catalogue_from_katpoint(url: str) -> katpoint.Catalogue:
+    """Load a katpoint sky model from an external file resource.
+    Parameters
+    ----------
+    url : str
+         A ``file://`` URL for a katpoint catalogue file
+
+    Raises
+    ------
+        ValueError
+            if `format` was not recognised, the URL doesn't contain the
+            expected query parameters, or the URL scheme is not supported
+        IOError, OSError
+            if there was a low-level error reading a file
+        Exception
+            any exception raised by katdal in opening the file
+
+    Returns
+    -------
+        KatpointSkyModel
+    """
+    if urllib.parse.urlparse(url, scheme='file').scheme != 'file':
+        raise ValueError('Only file:// URLs are supported for katpoint sky model format')
+    with open(urllib.parse.urlparse(url, scheme='file').path) as f:
+        return katpoint.Catalogue(f)
 
 
 class KatpointSkyModel(LocalSkyModel):

@@ -16,20 +16,15 @@
 
 """Tests for :mod:`katsdpmodels.local_sky`"""
 
-import io
 from typing import Generator
-
-import astropy.units as u
-import astropy.table
-import numpy as np
 import pytest
+from katsdpmodels import KatpointSkyModel
+import katpoint
 
-from katsdpmodels import models, local_sky
-import katsdpmodels.fetch.requests as fetch_requests
-from test_utils import get_data_url
+@pytest.fixture
+def dummy_local_sky() -> LocalSkyModel:
+    cat = katpoint.Catalogue()
+    lsm = KatpointSkyModel(cat)
+    return lsm
 
-def test_bad_model_format(mock_responses) -> None:
-    url = get_data_url('local_sky_bad_format.h5')
-    with pytest.raises(models.ModelFormatError) as exc_info:
-        fetch_requests.fetch_model(url, local_sky.KatpointSkyModel)
-    assert str(exc_info.value) == "Unknown model_format 'notkatpointskymodel' for local_sky"
+def test_
