@@ -44,7 +44,8 @@ _K = TypeVar('_K', bound='KatpointSkyModel')
 
 
 class NoSkyModelError(Exception):
-    """Attempted to load a sky model for continuum subtraction but it does not exist at the specified location"""
+    """Attempted to load a sky model for continuum subtraction but it does not exist at the
+    specified location """
     pass
 
 
@@ -132,6 +133,7 @@ def catalogue_from_telstate(telstate: Union[katsdptelstate.TelescopeState,
         logger.debug('KeyError', exc_info=True)
     raise NoSkyModelError('Sky model for target {} not found'.format(target.name))
 
+
 def catalogue_from_katpoint(url: str) -> katpoint.Catalogue:
     """Load a katpoint sky model from an external file resource.
     Parameters
@@ -162,7 +164,7 @@ def catalogue_from_katpoint(url: str) -> katpoint.Catalogue:
 class KatpointSkyModel(LocalSkyModel):
     model_format: ClassVar[Literal['katpoint_catalogue']] = 'katpoint_catalogue'
 
-    def __init__(self, cat: katpoint.Catalogue, pb: Optional[PrimaryBeam]):
+    def __init__(self, cat: katpoint.Catalogue, pb: Optional[PrimaryBeam] = None):
         self._cat = cat
         if pb:
             self._PBModel = pb

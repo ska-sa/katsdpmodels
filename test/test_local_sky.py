@@ -16,15 +16,20 @@
 
 """Tests for :mod:`katsdpmodels.local_sky`"""
 
-from typing import Generator
+# from typing import Generator
 import pytest
-from katsdpmodels import KatpointSkyModel
+from katsdpmodels import local_sky
 import katpoint
 
-@pytest.fixture
-def dummy_local_sky() -> LocalSkyModel:
-    cat = katpoint.Catalogue()
-    lsm = KatpointSkyModel(cat)
-    return lsm
 
-def test_
+@pytest.fixture
+def dummy_local_sky() -> local_sky.LocalSkyModel:
+    t1 = katpoint.Target('Ganymede, special')
+    t2 = katpoint.Target('Takreem, azel, 20, 30')
+    cat = katpoint.Catalogue([t1, t2])
+    return local_sky.KatpointSkyModel(cat)
+
+
+def test_targets(dummy_local_sky: local_sky.KatpointSkyModel):
+    model = dummy_local_sky
+    assert model.model_type == "lsm"
