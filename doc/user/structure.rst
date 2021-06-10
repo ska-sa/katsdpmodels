@@ -62,9 +62,16 @@ target
     heterogeneous dishes. The :samp:`{band}` is the single-letter abbreviation
     for the receiver band (``l``, ``s``, ``u`` or ``x``).
 
+    Additionally, for each cohort there is a target
+    :samp:`cohort/{cohort}/{band}`. For MeerKAT the cohort name is simply
+    ``meerkat``. For the MeerKAT Extension it will be ``meerkat_extension``.
+
     Note that even if ``individual`` is requested, many or all of the antennas
     may still share the same model if per-antenna models have not been
     produced.
+
+    The ``current/`` directory must contain all the targets defined
+    above, but the ``config/`` directory need not.
 
 config
     TBD. For cohorts it is assumed that the average beam properties will not
