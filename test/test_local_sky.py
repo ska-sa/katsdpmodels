@@ -22,14 +22,40 @@ from katsdpmodels import local_sky
 import katpoint
 
 
+_TRG_A  = 'A, radec, 20:00:00.00, -60:00:00.0, (200.0 12000.0 1.0 0.5)'
+_TRG_B  = 'B, radec, 8:00:00.00, 60:00:00.0, (200.0 12000.0 2.0)'
+_TRG_C  = 'C, radec, 21:00:00.00, -60:00:00.0, (800.0 43200.0 1.0 0.0 0.0 0.0 0.0 0.0 1.0 0.8 -0.7 0.6)'
+_PC     = 'pc, radec, 20:00:00.00, -60:00:00.0'
+
 @pytest.fixture
 def dummy_local_sky() -> local_sky.LocalSkyModel:
     t1 = katpoint.Target('Ganymede, special')
     t2 = katpoint.Target('Takreem, azel, 20, 30')
-    cat = katpoint.Catalogue([t1, t2])
-    return local_sky.KatpointSkyModel(cat)
+    t3 = katpoint.Target(_TRG_A)
+    t4 = katpoint.Target(_TRG_B)
+    t5 = katpoint.Target(_TRG_C)
+    cat = katpoint.Catalogue([t1, t2, t3, t4, t5])
+    pc = katpoint.Target(_PC)
+    return local_sky.KatpointSkyModel(cat, pc)
 
 
-def test_targets(dummy_local_sky: local_sky.KatpointSkyModel):
+def test_model_type(dummy_local_sky: local_sky.KatpointSkyModel):
     model = dummy_local_sky
     assert model.model_type == "lsm"
+
+
+def test_flux_density(dummy_local_sky):
+    model = dummy_local_sky
+    flux = model.flux_density(1e10 * units.Hz)
+    np.testing.assert_allclose(flux, [
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+        [1000, 0, 0, 0],
+        [100, 0, 0, 0],
+        [10, 8, -7, 6]])
+
+
+def test_phase_centre(dummy_local_sky):
+    phase_centre = np.array([300, -60]) * units.deg  # RA 20.0
+    model = dummy_local_sky
+    assert model._Phase_centre

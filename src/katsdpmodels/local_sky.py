@@ -50,7 +50,11 @@ class NoSkyModelError(Exception):
 
 
 class NoPrimaryBeamError(Exception):
-    """Attempted to get the associated primary Beam model but it hasn't been set"""
+    """Attempted to get the associated primary beam model but it hasn't been set"""
+    pass
+
+class NoPhasecentreError(Exception):
+    """Attempted to get the phase centre target, but it hasn't been se"""
     pass
 
 
@@ -164,10 +168,14 @@ def catalogue_from_katpoint(url: str) -> katpoint.Catalogue:
 class KatpointSkyModel(LocalSkyModel):
     model_format: ClassVar[Literal['katpoint_catalogue']] = 'katpoint_catalogue'
 
-    def __init__(self, cat: katpoint.Catalogue, pb: Optional[PrimaryBeam] = None):
+    def __init__(self, cat: katpoint.Catalogue,
+                 pc: Optional[Katpoint.Target] = None,
+                 pb: Optional[PrimaryBeam] = None):
         self._cat = cat
         if pb:
             self._PBModel = pb
+        if pc:
+            self._PhaseCentre = pc
         super().__init__()
 
     @property
@@ -175,6 +183,12 @@ class KatpointSkyModel(LocalSkyModel):
         if self._PBModel is None:
             raise NoPrimaryBeamError
         return self._PBModel
+
+    @property
+    def PhaseCentre(self) -> katpoint.Target:
+        if self._PhaseCentre is None:
+            raise NoPhaseCentreError
+        return self._PhaseCentre
 
     @PBModel.setter
     def PBModel(self, pb: PrimaryBeam) -> None:
