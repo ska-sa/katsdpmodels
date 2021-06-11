@@ -48,3 +48,35 @@ target
 
 config
     The document number of the release note for the correlator.
+
+Primary beam
+------------
+target
+    :samp:`{group}/{antenna}/{band}`, where :samp:`{group}` is either
+    ``individual`` or ``cohort``). The choice is made by the user depending on
+    whether antenna-specific models are desirable or not. Readers that want the
+    most accurate possible models should use ``individual``, while readers that
+    will benefit from having many antennas share the same model should use
+    ``cohort``. For MeerKAT, ``cohort`` will ensure that all antennas share the
+    same model, although this will not hold for the MeerKAT Extension as it has
+    heterogeneous dishes. The :samp:`{band}` is the single-letter abbreviation
+    for the receiver band (``l``, ``s``, ``u`` or ``x``).
+
+    Additionally, for each cohort there is a target
+    :samp:`cohort/{cohort}/{band}`. For MeerKAT the cohort name is simply
+    ``meerkat``. For the new dishes in the MeerKAT Extension it will be
+    ``meerkat_extension``.
+
+    Note that even if ``individual`` is requested, many or all of the antennas
+    may still share the same model if per-antenna models have not been
+    produced.
+
+    The ``current/`` directory must contain all the targets defined
+    above, but the ``config/`` directory need not.
+
+config
+    TBD. For cohorts it is assumed that the average beam properties will not
+    change significantly over time, so an unversioned name (such as ``meerkat``)
+    may suffice. For antenna-specific models the receiver serial number should
+    be included, as well as some form of version number that can be updated for
+    changes not related to the receiver identity.

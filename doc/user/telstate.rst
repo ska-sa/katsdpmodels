@@ -27,14 +27,16 @@ represented as :samp:`{acv}` in the names below.
 
 Example
 -------
-While katsdpmodels doesn't yet support primary beam models, we'll use it for
-an example because it's a complex case that demonstrates multiple aspects of
+We'll use primary beam models for our example because it's a complex case that
+demonstrates multiple aspects of
 the design. Consider a primary beam model for the UHF receiver on antenna
-m012. For simplicity, we’ll assume the configuration depends only on the dish
-and the receiver, with no other versioning. Then the initial setup as aliases
+m012. For the sake of this example, we'll use the receiver serial number and a
+year as the configuration name. Then the initial setup as aliases
 may be as seen in the left side of the figure below. After an observation has
 been run, the telescope state (as serialized to the :file:`.rdb` file) appears on
-the right.
+the right, where the brackets indicate that this is an element of an indexed
+key (``individual`` indicates that this is a model suitable for consumers that
+prefer per-antenna models over array-average models).
 
 .. tikz::
    :libs: chains, positioning, fit
@@ -49,8 +51,8 @@ situation:
    :include: example_aliases2.tex
 
 The telescope state has not been altered, but by using the
-``model_primary_beam_config`` key, one can access the improved model, without
-losing track of the model that was used online.
+``model_primary_beam_individual_config`` key, one can access the improved
+model, without losing track of the model that was used online.
 
 Next, suppose the receiver on m012 was swapped out for a different one. Then
 the situation might change to look like this:
@@ -73,6 +75,11 @@ RFI mask
 
 Band mask
     :samp:`{acv}_model_band_mask_{type}`
+
+Primary beam
+    :samp:`{acv}_model_primary_beam_{group}_{type}`, where
+    :samp:`{group}` is one of ``individual`` or ``cohort``. This is an indexed
+    telescope state key, with the antenna name as the index.
 
 API
 ---
