@@ -64,7 +64,8 @@ target
 
     Additionally, for each cohort there is a target
     :samp:`cohort/{cohort}/{band}`. For MeerKAT the cohort name is simply
-    ``meerkat``. For the MeerKAT Extension it will be ``meerkat_extension``.
+    ``meerkat``. For the new dishes in the MeerKAT Extension it will be
+    ``meerkat_extension``.
 
     Note that even if ``individual`` is requested, many or all of the antennas
     may still share the same model if per-antenna models have not been
