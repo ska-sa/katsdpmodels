@@ -17,6 +17,7 @@
 """Local Sky Models"""
 from typing import Any, ClassVar, Optional, Type, TypeVar, Union
 
+import numpy as np
 from typing_extensions import Literal
 
 try:
@@ -35,7 +36,7 @@ from katsdpmodels.primary_beam import PrimaryBeam
 
 from . import models
 
-# import astropy.units as u
+import astropy.units as units
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +141,7 @@ def catalogue_from_telstate(telstate: Union[katsdptelstate.TelescopeState,
 
 
 def catalogue_from_katpoint(url: str) -> katpoint.Catalogue:
-    """Load a katpoint sky model from an external file resource.
+    """Load a katpoint sky model from file.
     Parameters
     ----------
     url : str
@@ -185,16 +186,27 @@ class KatpointSkyModel(LocalSkyModel):
             raise NoPrimaryBeamError
         return self._PBModel
 
+    @PBModel.setter
+    def PBModel(self, pb: PrimaryBeam) -> None:
+        # check pb exists and is accessible
+        self._PBModel = pb
+
     @property
     def PhaseCentre(self) -> katpoint.Target:
         if self._PhaseCentre is None:
             raise NoPhaseCentreError
         return self._PhaseCentre
 
-    @PBModel.setter
-    def PBModel(self, pb: PrimaryBeam) -> None:
+    @PhaseCentre.setter
+    def PhaseCentre(self, pc: katpoint.Target) -> None:
         # check pb exists and is accessible
-        self._PBModel = pb
+        self._PhaseCentre = pc
+
+    @units.quantity_input(wavelength=units.m, equivalencies=units.spectral())
+    def flux_density(self, wavelength):
+        freq_MHz = wavelength.to(units.MHz, equivalencies=units.spectral()).value
+        out = np.stack([source.flux_density_stokes(freq_MHz) for source in self._catalogue])
+        return np.nan_to_num(out, copy=False)
 
     @classmethod
     def from_katpoint_catalogue(cls: Type[_K], cat: katpoint.Catalogue) -> _K:
@@ -214,7 +226,7 @@ class ComponentSkyModel(LocalSkyModel):
     model_format: ClassVar[Literal['skymodel']] = 'skymodel'
 
     def __init__(self, cat):
-        self.cat = cat
+        self._cat = cat
         super().__init__()
 
     @classmethod
@@ -223,5 +235,5 @@ class ComponentSkyModel(LocalSkyModel):
         return cls(cat)
 
     def to_hdf5(self, hdf5: h5py.File) -> None:
-        hdf5.attrs['cat'] = self.cat
-        hdf5.create_dataset('cat', data=self.cat, track_times=False)
+        hdf5.attrs['cat'] = self._cat
+        hdf5.create_dataset('cat', data=self._cat, track_times=False)
