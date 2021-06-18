@@ -600,7 +600,7 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
             raise ValueError(f'Unrecognised output_type {output_type}')
 
     @staticmethod
-    @numba.njit
+    @numba.njit(parallel=True)
     def _sample_impl(aperture: np.ndarray, xf: np.ndarray, yf: np.ndarray,
                      l: np.ndarray, m: np.ndarray, out: np.ndarray) -> None:
         """Numba implementation details of :meth:`_sample_altaz_jones`.
@@ -616,7 +616,7 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         out
             Output array
         """
-        for freq_idx in np.ndindex(xf.shape[:-1]):
+        for freq_idx in numba.prange(xf.shape[0]):
             # Frequency-specific 1D arrays
             x = xf[freq_idx]
             y = yf[freq_idx]
@@ -626,7 +626,7 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
             for i in range(2):
                 for j in range(2):
                     tmp = coeff2 @ ap[i, j]
-                    out_chunk = out[freq_idx + (...,) + (i, j)]
+                    out_chunk = out[freq_idx, :, i, j]
                     for lm_idx in range(l.shape[0]):
                         out_chunk[lm_idx] = np.dot(tmp[lm_idx], coeff1[lm_idx])
 
@@ -653,20 +653,23 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         elif out.shape != out_shape:
             raise ValueError(f'out must have shape {out_shape}, not {out.shape}')
 
+        # Numba can't handle the broadcasting involved in multi-dimensional
+        # l/m/freq, so flatten. Assign to shape instead of reshape to ensure
+        # no copying.
+        out_view = out.view()
+        out_view.shape = (frequency.size, l.size, 2, 2)
+        flat_frequency = frequency.ravel()
+
         # Compute x and y in wavelengths
-        wavenumber = frequency.to('m^-1', equivalencies=u.spectral())
+        wavenumber = flat_frequency.to('m^-1', equivalencies=u.spectral())
         xf = _asarray(np.multiply.outer(wavenumber, self.x), np.float32)
         yf = _asarray(np.multiply.outer(wavenumber, self.y), np.float32)
-        # Numba can't handle the broadcasting involved in multi-dimensional
-        # l/m, so flatten. Assign to shape instead of reshape to ensure no
-        # copying.
-        out_view = out.view()
-        out_view.shape = frequency.shape + (l.size, 2, 2)
-        samples = self._prepare_samples(frequency)
+        samples = self._prepare_samples(flat_frequency)
         self._sample_impl(samples, xf, yf, l.ravel(), m.ravel(), out_view)
 
         # Check if there are any points that may lie outside the valid l/m
         # region. If not (common case) we can avoid computing masks.
+        wavenumber = wavenumber.reshape(frequency.shape)  # Undo ravelling
         max_l = np.max(np.abs(l))
         max_m = np.max(np.abs(m))
         max_wavenumber = np.max(wavenumber)
@@ -730,27 +733,38 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
             return self._finalize(jones, output_type, out=out)
 
     @staticmethod
-    @numba.njit
     def _sample_grid_impl(x_m: np.ndarray, y_m: np.ndarray,
                           l: np.ndarray, m: np.ndarray,
                           wavenumber: np.ndarray,
                           samples: np.ndarray,
                           out: np.ndarray) -> None:
+        # This function was originally split into a static method so that it
+        # could be optimised with numba. However, when sampling a large grid it
+        # is actually significantly faster without numba. If numpy is using
+        # OpenBLAS then it also parallelises the matrix multiplications and so
+        # there is no advantage to using numba parallelisation.
+        tmp = np.zeros((len(y_m), len(l) * 4), np.complex64)
+        coeff1 = None  # Reuse the memory for these from one loop to the next
+        coeff2 = None
         for freq_idx in np.ndindex(wavenumber.shape):
             x = x_m * wavenumber[freq_idx]
             y = y_m * wavenumber[freq_idx]
-            coeff1 = _expjm2pi(np.outer(l, x))
-            coeff2 = _expjm2pi(np.outer(m, y))
+            coeff1 = _expjm2pi(np.outer(l, x), out=coeff1)
+            coeff2 = _expjm2pi(np.outer(m, y), out=coeff2)
             # Shove the polarizations into extra columns in a matrix. Matrix
             # multiplication treats the columns in the RHS independently,
             # which is what we want for polarizations, and the result then
             # has the right memory layout.
-            tmp = np.zeros((len(y), len(l) * 4), np.complex64)
             s = samples[freq_idx]
             for i in range(2):
                 for j in range(2):
                     tmp[:, (i * 2 + j)::4] = s[i, j] @ coeff1.T
-            out[freq_idx] = (coeff2 @ tmp).reshape(out[freq_idx].shape)
+            # View the output in a way that matches the shape we get from
+            # the matrix multiply, rather than multiplying into a temporary
+            # then reshaping it to fit the output.
+            out_view = out[freq_idx]
+            out_view.shape = (coeff2.shape[0], tmp.shape[1])
+            np.matmul(coeff2, tmp, out=out_view)
 
     def _sample_grid_altaz_jones(
             self, l: np.ndarray, m: np.ndarray, frequency: u.Quantity, *,
@@ -771,6 +785,10 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         out_shape = frequency.shape + m.shape + l.shape + (2, 2)
         if out is None:
             out = np.empty(out_shape, np.complex64)
+            # Pre-fault the memory. This seems to speed up matrix
+            # multiplications that write out to this memory. See
+            # https://github.com/numpy/numpy/issues/18669
+            out.ravel()[::(4096 // 8)].fill(0)
         elif out.shape != out_shape:
             raise ValueError(f'out must have shape {out_shape}, not {out.shape}')
         self._sample_grid_impl(x_m, y_m, l, m, wavenumber_m, samples, out)
