@@ -486,13 +486,16 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
 
     @property
     def _x_sym(self) -> u.Quantity:
-        """x coordinates associated with the autocorrelation of samples."""
-        # Stop at 0 rather than including the positive half because we
-        # exploit conjugate symmetry.
+        """x coordinates associated with the autocorrelation of samples.
+
+        It only contains the coordinates for half of the aperture plane
+        due to conjugate symmetry (see :meth:`_prepare_samples`).
+        """
         return np.arange(-self.samples.shape[-1] + 1, 1) * self.x_step
 
     @property
     def _y_sym(self) -> u.Quantity:
+        """y coordinates associated with the autocorrelation of samples."""
         return np.arange(-self.samples.shape[-2] + 1, self.samples.shape[-2]) * self.y_step
 
     def spatial_resolution(self, frequency: u.Quantity) -> np.ndarray:
@@ -539,30 +542,42 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         return self._band
 
     def _prepare_samples(self, frequency: u.Quantity, output_type: OutputType) -> np.ndarray:
-        """Interpolate aperture plane to selected frequencies, and optionally rotate."""
+        """Interpolate aperture plane to selected frequencies, and optionally rotate.
+
+        If `output_type` is :data:`OutputType.UNPOLARIZED_POWER`, an additional
+        transformation is performed. The unpolarized power response can be
+        computed from the Jones matrix as half the sum of the squared
+        magnitudes of its elements. Squared magnitude in the beam plane
+        corresponds to auto-correlation (in the signal processing sense) in the
+        aperture plane. With that transformation, the summation can also be
+        moved into the aperture plane.
+
+        Furthermore, the auto-correlation is conjugate-symmetric, so we can
+        discard half the aperture plane (rounded down) without losing any
+        information. We discard the upper half on the X axis, and double the
+        conjugate mirrors of the discarded elements to compensate.
+        """
         frequency_Hz = frequency.to_value(u.Hz).astype(np.float32, copy=False, casting='same_kind')
         samples = self._interp_samples(frequency_Hz)
         if output_type == OutputType.UNPOLARIZED_POWER:
-            # Take autocorrelation of samples. This is equivalent
-            # to squared magnitude in the beam plane. scipy.signal.correlate
-            # would be preferrable as it automatically determines whether to
-            # use an FFT or direct convolution (and handles the
-            # conjugate-and-reverse itself), but it doesn't take an `axes`
-            # argument.
+            # scipy.signal.correlate would be preferrable as it automatically
+            # determines whether to use an FFT or direct convolution (and
+            # handles the conjugate-and-reverse itself), but it doesn't take an
+            # `axes` argument.
             # scipy.signal.choose_conv_method suggests that FFT is better for 8x8
-            # or larger, so we just use it directly.
+            # or larger, which should cover any realistic beam model, so we
+            # just use it directly.
             samples = scipy.signal.fftconvolve(
                 samples, samples[..., ::-1, ::-1].conj(), axes=(-2, -1))
-            # samples is conjugate-symmetric, so we can save half the compute cost by
-            # retaining only half the data (slightly more than half, because
-            # the size is odd).
+            # Discard half
             samples = samples[..., :samples.shape[-1] // 2 + 1]
             # Add along Jones axes.
             samples = samples.sum(axis=(-4, -3))
             # Scale everything except the central values by 2 to compensate for
             # discarding conjugate-symmetric mirrors, and scale by 1/2 for the
             # calculation of UNPOLARIZED_POWER. These cancel out everywhere
-            # except the central values.
+            # except the central values (which are now at position -1 due to
+            # the discarding).
             samples[..., -1] *= 0.5
         return samples
 
@@ -647,7 +662,7 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         l, m
             1D l and m coordinates (already broadcast with each other)
         out
-            Output array
+            Output array (Jones matrices)
         """
         for freq_idx in numba.prange(xf.shape[0]):
             # Frequency-specific 1D arrays
@@ -704,7 +719,8 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         It takes `l` and `m` in AltAz frame, and either produces Jones matrices
         (in either :data:`OutputType.JONES_HV` or :data:`OutputType.JONES_XY`)
         or unpolarized power. The provided `frame` and `output_type` are used
-        only for polarization rotation.
+        for polarization rotation but do not affect the interpretation of `l`
+        and `m`.
 
         l and m must already be broadcast to the same shape, and must be float32.
         """
