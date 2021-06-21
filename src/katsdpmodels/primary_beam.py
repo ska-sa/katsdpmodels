@@ -484,6 +484,17 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         """y coordinates associated with the samples."""
         return np.arange(self.samples.shape[-2]) * self.y_step + self.y_start
 
+    @property
+    def _x_sym(self) -> u.Quantity:
+        """x coordinates associated with the autocorrelation of samples."""
+        # Stop at 0 rather than including the positive half because we
+        # exploit conjugate symmetry.
+        return np.arange(-self.samples.shape[-1] + 1, 1) * self.x_step
+
+    @property
+    def _y_sym(self) -> u.Quantity:
+        return np.arange(-self.samples.shape[-2] + 1, self.samples.shape[-2]) * self.y_step
+
     def spatial_resolution(self, frequency: u.Quantity) -> np.ndarray:
         # Compute the Nyquist frequency, taking the maximum between x and y
         x = self.x
@@ -527,10 +538,32 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
     def band(self) -> str:
         return self._band
 
-    def _prepare_samples(self, frequency: u.Quantity) -> np.ndarray:
+    def _prepare_samples(self, frequency: u.Quantity, output_type: OutputType) -> np.ndarray:
         """Interpolate aperture plane to selected frequencies, and optionally rotate."""
         frequency_Hz = frequency.to_value(u.Hz).astype(np.float32, copy=False, casting='same_kind')
         samples = self._interp_samples(frequency_Hz)
+        if output_type == OutputType.UNPOLARIZED_POWER:
+            # Take autocorrelation of samples. This is equivalent
+            # to squared magnitude in the beam plane. scipy.signal.correlate
+            # would be preferrable as it automatically determines whether to
+            # use an FFT or direct convolution (and handles the
+            # conjugate-and-reverse itself), but it doesn't take an `axes`
+            # argument.
+            # scipy.signal.choose_conv_method suggests that FFT is better for 8x8
+            # or larger, so we just use it directly.
+            samples = scipy.signal.fftconvolve(
+                samples, samples[..., ::-1, ::-1].conj(), axes=(-2, -1))
+            # samples is conjugate-symmetric, so we can save half the compute cost by
+            # retaining only half the data (slightly more than half, because
+            # the size is odd).
+            samples = samples[..., :samples.shape[-1] // 2 + 1]
+            # Add along Jones axes.
+            samples = samples.sum(axis=(-4, -3))
+            # Scale everything except the central values by 2 to compensate for
+            # discarding conjugate-symmetric mirrors, and scale by 1/2 for the
+            # calculation of UNPOLARIZED_POWER. These cancel out everywhere
+            # except the central values.
+            samples[..., -1] *= 0.5
         return samples
 
     @staticmethod
@@ -608,7 +641,7 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
     @numba.njit(parallel=True)
     def _sample_impl(aperture: np.ndarray, xf: np.ndarray, yf: np.ndarray,
                      l: np.ndarray, m: np.ndarray, out: np.ndarray) -> None:
-        """Numba implementation details of :meth:`_sample_altaz_jones`.
+        """Numba implementation details of :meth:`_sample_altaz`.
 
         Parameters
         ----------
@@ -639,7 +672,7 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
     @numba.njit(parallel=True)
     def _sample_power_impl(aperture: np.ndarray, xf: np.ndarray, yf: np.ndarray,
                            l: np.ndarray, m: np.ndarray, out: np.ndarray) -> None:
-        """Numba implementation of :meth:`_sample_altaz_jones` for ``UNPOLARIZED_POWER``.
+        """Numba implementation of :meth:`_sample_altaz` for ``UNPOLARIZED_POWER``.
 
         This is essentially the same thing as :meth:`_sample_impl`, but
         modified to output real scalars rather than complex Jones matrices.
@@ -667,16 +700,16 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
             for lm_idx in range(l.shape[0]):
                 out_chunk[lm_idx] = np.dot(tmp[lm_idx], coeff1[lm_idx]).real
 
-    def _sample_altaz_jones(
+    def _sample_altaz(
             self, l: np.ndarray, m: np.ndarray, frequency: u.Quantity,
             frame: Union[AltAzFrame, RADecFrame], output_type: OutputType, *,
             out: Optional[np.ndarray] = None) -> np.ndarray:
         """Partial implementation of :meth:`sample`.
 
-        It takes `l` and `m` in AltAz frame, and produces Jones matrices in
-        either :data:`OutputType.JONES_HV` or :data:`OutputType.JONES_XY`.
-        The provided `frame` and `output_type` are used only for polarization
-        rotation.
+        It takes `l` and `m` in AltAz frame, and either produces Jones matrices
+        (in either :data:`OutputType.JONES_HV` or :data:`OutputType.JONES_XY`)
+        or unpolarized power. The provided `frame` and `output_type` are used
+        only for polarization rotation.
 
         l and m must already be broadcast to the same shape, and must be float32.
         """
@@ -700,34 +733,10 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
 
         # Compute x and y in wavelengths
         wavenumber = flat_frequency.to('m^-1', equivalencies=u.spectral())
-        samples = self._prepare_samples(flat_frequency)
+        samples = self._prepare_samples(flat_frequency, output_type)
         if output_type == OutputType.UNPOLARIZED_POWER:
-            # Get coordinates for the convolution of samples with
-            # samples.conj(). For x we keep only half the samples to exploit
-            # conjugate symmetry.
-            x = np.arange(-samples.shape[-1] + 1, 1) * self.x_step
-            y = np.arange(-samples.shape[-2] + 1, samples.shape[-2]) * self.y_step
-            xf = _asarray(np.multiply.outer(wavenumber, x), np.float32)
-            yf = _asarray(np.multiply.outer(wavenumber, y), np.float32)
-            # Take autocorrelation of samples. This is equivalent
-            # to squared magnitude in the beam plane. scipy.signal.correlate
-            # would be preferrable as it automatically determines whether to
-            # use an FFT or direct convolution (and handles the
-            # conjugate-and-reverse itself), but it doesn't take an `axes`
-            # argument.
-            # scipy.signal.choose_conv_method suggests that FFT is better for 8x8
-            # or larger, so we just use it directly.
-            samples = scipy.signal.fftconvolve(
-                samples, samples[..., ::-1, ::-1].conj(), axes=(-2, -1))
-            # samples is conjugate-symmetric, so we can save half the compute cost by
-            # retaining only half the data (slightly more than half, because
-            # the size is odd). To make up for the samples that have been discarded,
-            # double their counterparts.
-            samples = samples[..., :samples.shape[-1] // 2 + 1]
-            samples[..., :-1] *= 2
-            # Add along Jones axes and scale by 1/2 to get appropriate value for
-            # UNPOLARIZED_POWER
-            samples = samples.sum(axis=(1, 2)) * 0.5
+            xf = _asarray(np.multiply.outer(wavenumber, self._x_sym), np.float32)
+            yf = _asarray(np.multiply.outer(wavenumber, self._y_sym), np.float32)
             self._sample_power_impl(samples, xf, yf, l.ravel(), m.ravel(), out_view)
         else:
             xf = _asarray(np.multiply.outer(wavenumber, self.x), np.float32)
@@ -795,9 +804,9 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         m_ = _asarray(m_, np.float32)
 
         if output_type in {OutputType.JONES_XY, OutputType.JONES_HV, OutputType.UNPOLARIZED_POWER}:
-            return self._sample_altaz_jones(l_, m_, frequency, frame, output_type, out=out)
+            return self._sample_altaz(l_, m_, frequency, frame, output_type, out=out)
         else:
-            jones = self._sample_altaz_jones(l_, m_, frequency, frame, output_type)
+            jones = self._sample_altaz(l_, m_, frequency, frame, output_type)
             return self._finalize(jones, output_type, out=out)
 
     @staticmethod
@@ -834,32 +843,58 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
             out_view.shape = (coeff2.shape[0], tmp.shape[1])
             np.matmul(coeff2, tmp, out=out_view)
 
-    def _sample_grid_altaz_jones(
+    @staticmethod
+    def _sample_grid_power_impl(x_m: np.ndarray, y_m: np.ndarray,
+                                l: np.ndarray, m: np.ndarray,
+                                wavenumber: np.ndarray,
+                                samples: np.ndarray,
+                                out: np.ndarray) -> None:
+        # Like _sample_grid_impl, but for UNPOLARIZED_POWER.
+        tmp = np.zeros((len(y_m), len(l)), np.complex64)
+        coeff1 = None  # Reuse the memory for these from one loop to the next
+        coeff2 = None
+        for freq_idx in np.ndindex(wavenumber.shape):
+            x = x_m * wavenumber[freq_idx]
+            y = y_m * wavenumber[freq_idx]
+            coeff1 = _expjm2pi(np.outer(l, x), out=coeff1)
+            coeff2 = _expjm2pi(np.outer(m, y), out=coeff2)
+            tmp[:] = samples[freq_idx] @ coeff1.T
+            out[freq_idx] = np.matmul(coeff2, tmp).real
+
+    def _sample_grid_altaz(
             self, l: np.ndarray, m: np.ndarray, frequency: u.Quantity, *,
+            output_type: OutputType,
             out: Optional[np.ndarray] = None) -> np.ndarray:
         """Partial implementation of :meth:`sample_grid`.
 
-        It takes `l` and `m` in AltAz frame and produces Jones HV matrices.
+        It takes `l` and `m` in AltAz frame and produces either Jones HV matrices
+        or unpolarized power.
         """
         assert l.ndim == 1
         assert l.shape == m.shape
         assert l.dtype == np.dtype(np.float32)
         assert m.dtype == np.dtype(np.float32)
-        x_m = _asarray(self.x.to_value(u.m), np.float32)
-        y_m = _asarray(self.y.to_value(u.m), np.float32)
         wavenumber = frequency.to('m^-1', equivalencies=u.spectral())
         wavenumber_m = _asarray(wavenumber.value, np.float32)
-        samples = self._prepare_samples(frequency)
-        out_shape = frequency.shape + m.shape + l.shape + (2, 2)
+        samples = self._prepare_samples(frequency, output_type)
+        matrix_shape = (2, 2) if output_type != OutputType.UNPOLARIZED_POWER else ()
+        out_shape = frequency.shape + m.shape + l.shape + matrix_shape
         if out is None:
-            out = np.empty(out_shape, np.complex64)
+            out = np.empty(out_shape, _out_dtype(output_type))
             # Pre-fault the memory. This seems to speed up matrix
             # multiplications that write out to this memory. See
             # https://github.com/numpy/numpy/issues/18669
             out.ravel()[::(4096 // 8)].fill(0)
         elif out.shape != out_shape:
             raise ValueError(f'out must have shape {out_shape}, not {out.shape}')
-        self._sample_grid_impl(x_m, y_m, l, m, wavenumber_m, samples, out)
+        if output_type == OutputType.UNPOLARIZED_POWER:
+            x_m = _asarray(self._x_sym.to_value(u.m), np.float32)
+            y_m = _asarray(self._y_sym.to_value(u.m), np.float32)
+            self._sample_grid_power_impl(x_m, y_m, l, m, wavenumber_m, samples, out)
+        else:
+            x_m = _asarray(self.x.to_value(u.m), np.float32)
+            y_m = _asarray(self.y.to_value(u.m), np.float32)
+            self._sample_grid_impl(x_m, y_m, l, m, wavenumber_m, samples, out)
 
         # Check if there are any points that may lie outside the valid l/m
         # region. If not (common case) we can avoid computing masks.
@@ -871,12 +906,16 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         if max_l * max_wavenumber > limit_l:
             invalid = np.multiply.outer(wavenumber, np.abs(l)) > limit_l
             # Insert axes for m and Jones terms
-            invalid = invalid[..., np.newaxis, :, np.newaxis, np.newaxis]
+            invalid = invalid[..., np.newaxis, :]
+            if output_type != OutputType.UNPOLARIZED_POWER:
+                invalid = invalid[..., np.newaxis, np.newaxis]
             np.copyto(out, np.nan, where=invalid)
         if max_m * max_wavenumber > limit_m:
             invalid = np.multiply.outer(wavenumber, np.abs(m)) > limit_m
             # Insert axes for l and Jones terms
-            invalid = invalid[..., np.newaxis, np.newaxis, np.newaxis]
+            invalid = invalid[..., np.newaxis]
+            if output_type != OutputType.UNPOLARIZED_POWER:
+                invalid = invalid[..., np.newaxis, np.newaxis]
             np.copyto(out, np.nan, where=invalid)
 
         return out
@@ -901,11 +940,7 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
                 frame, output_type, out=out)
         else:
             _check_out(out, output_type)
-            if output_type == OutputType.JONES_HV:
-                return self._sample_grid_altaz_jones(l_, m_, frequency, out=out)
-            else:
-                mid = self._sample_grid_altaz_jones(l_, m_, frequency)
-                return self._finalize(mid, output_type, out=out)
+            return self._sample_grid_altaz(l_, m_, frequency, output_type=output_type, out=out)
 
     @classmethod
     def from_hdf5(cls: Type[_P], hdf5: h5py.File) -> _P:
