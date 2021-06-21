@@ -641,6 +641,9 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
                            l: np.ndarray, m: np.ndarray, out: np.ndarray) -> None:
         """Numba implementation of :meth:`_sample_altaz_jones` for ``UNPOLARIZED_POWER``.
 
+        This is essentially the same thing as :meth:`_sample_impl`, but
+        modified to output real scalars rather than complex Jones matrices.
+
         Parameters
         ----------
         aperture
@@ -699,8 +702,10 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         wavenumber = flat_frequency.to('m^-1', equivalencies=u.spectral())
         samples = self._prepare_samples(flat_frequency)
         if output_type == OutputType.UNPOLARIZED_POWER:
-            # Get coordinates for the convolution of samples with samples.conj()
-            x = np.arange(-samples.shape[-1] + 1, samples.shape[-1]) * self.x_step
+            # Get coordinates for the convolution of samples with
+            # samples.conj(). For x we keep only half the samples to exploit
+            # conjugate symmetry.
+            x = np.arange(-samples.shape[-1] + 1, 1) * self.x_step
             y = np.arange(-samples.shape[-2] + 1, samples.shape[-2]) * self.y_step
             xf = _asarray(np.multiply.outer(wavenumber, x), np.float32)
             yf = _asarray(np.multiply.outer(wavenumber, y), np.float32)
@@ -714,6 +719,12 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
             # or larger, so we just use it directly.
             samples = scipy.signal.fftconvolve(
                 samples, samples[..., ::-1, ::-1].conj(), axes=(-2, -1))
+            # samples is conjugate-symmetric, so we can save half the compute cost by
+            # retaining only half the data (slightly more than half, because
+            # the size is odd). To make up for the samples that have been discarded,
+            # double their counterparts.
+            samples = samples[..., :samples.shape[-1] // 2 + 1]
+            samples[..., :-1] *= 2
             # Add along Jones axes and scale by 1/2 to get appropriate value for
             # UNPOLARIZED_POWER
             samples = samples.sum(axis=(1, 2)) * 0.5
