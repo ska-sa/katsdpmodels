@@ -610,15 +610,17 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
     @staticmethod
     def _finalize(values: np.ndarray, output_type: OutputType,
                   out: Optional[np.ndarray]) -> np.ndarray:
-        """Handle :data:`OutputType.MUELLER` and `OutputType.UNPOLARIZED_POWER`.
+        """Handle conversion of Jones matrices to output types.
+
+        Currently it only handles :data:`OutputType.MUELLER`, as
+        :data:`OutputType.UNPOLARIZED_POWER` is handled in a different way.
 
         Parameters
         ----------
         values
             Stacked 2x2 Jones matrices, suitable for `output_type`
         output_type
-            Target output type, either :data:`OutputType.MUELLER` or
-            :data:`OutputType.UNPOLARIZED_POWER`.
+            Target output type, which must be :data:`OutputType.MUELLER`
         """
         if output_type == OutputType.MUELLER:
             conj = np.conj(values)
@@ -627,13 +629,6 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
             M = np.block([[values[..., 0:1, 0:1] * conj, values[..., 0:1, 1:2] * conj],
                           [values[..., 1:2, 0:1] * conj, values[..., 1:2, 1:2] * conj]])
             return np.matmul(_XY_TO_IQUV @ M, _IQUV_TO_XY, out=out)
-        elif output_type == OutputType.UNPOLARIZED_POWER:
-            # Compute sum of squared magnitudes across the 4 Jones terms.
-            # Viewing at float32 simplifies summing squared magnitudes.
-            assert values.dtype == np.dtype(np.complex64)
-            ret = np.sum(np.square(values.view(np.float32)), axis=(-2, -1), out=out)
-            ret *= 0.5
-            return ret
         else:
             raise ValueError(f'Unrecognised output_type {output_type}')
 
