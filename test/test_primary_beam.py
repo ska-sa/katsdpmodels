@@ -579,7 +579,7 @@ def test_sample_unpolarized_power(
     unpol = model.sample(
         l, m, frequency, frame, primary_beam.OutputType.UNPOLARIZED_POWER)
 
-    np.testing.assert_allclose(unpol, mueller[..., 0, 0], atol=1e-5)
+    np.testing.assert_allclose(unpol, mueller[..., 0, 0].real, atol=1e-5)
 
 
 def _test_sample_radec_array(

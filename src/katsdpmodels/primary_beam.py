@@ -29,6 +29,7 @@ except ImportError:
     DTypeLike = Any  # type: ignore
 import numba
 import scipy.interpolate
+import scipy.signal
 import astropy.units as u
 from astropy.coordinates import SkyCoord
 from astropy.utils import ShapedLikeNDArray
@@ -409,13 +410,16 @@ def _asarray(x: ArrayLike, dtype: Optional[DTypeLike] = None) -> np.ndarray:
     return array
 
 
+def _out_dtype(output_type: OutputType) -> np.dtype:
+    if output_type != OutputType.UNPOLARIZED_POWER:
+        return np.dtype(np.complex64)
+    else:
+        return np.dtype(np.float32)
+
+
 def _check_out(out: Optional[np.ndarray], output_type: OutputType) -> None:
     if out is not None:
-        expected_dtype: np.dtype
-        if output_type != OutputType.UNPOLARIZED_POWER:
-            expected_dtype = np.dtype(np.complex64)
-        else:
-            expected_dtype = np.dtype(np.float32)
+        expected_dtype = _out_dtype(output_type)
         if out.dtype != expected_dtype:
             raise TypeError(f'out must have dtype {expected_dtype}, not {out.dtype}')
         if not out.flags.c_contiguous:
@@ -461,8 +465,9 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
             raise NotImplementedError('at least 2 frequencies are currently required')
         self.samples = samples.astype(np.complex64, copy=False, casting='same_kind')
         scale = samples.shape[-1] * samples.shape[-2]   # Normalisation factor
+        scaled_samples = self.samples / scale
         self._interp_samples = scipy.interpolate.interp1d(
-            self.frequency.to_value(u.Hz), self.samples / scale,
+            self.frequency.to_value(u.Hz), scaled_samples,
             axis=0, copy=False, bounds_error=False, fill_value=np.nan,
             assume_sorted=True)
         self._antenna = antenna
@@ -630,6 +635,35 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
                     for lm_idx in range(l.shape[0]):
                         out_chunk[lm_idx] = np.dot(tmp[lm_idx], coeff1[lm_idx])
 
+    @staticmethod
+    @numba.njit(parallel=True)
+    def _sample_power_impl(aperture: np.ndarray, xf: np.ndarray, yf: np.ndarray,
+                           l: np.ndarray, m: np.ndarray, out: np.ndarray) -> None:
+        """Numba implementation of :meth:`_sample_altaz_jones` for ``UNPOLARIZED_POWER``.
+
+        Parameters
+        ----------
+        aperture
+            Aperture-plane samples, already interpolated onto the desired frequencies
+        xf, yf
+            x and y in wavelength, with the frequency axes first.
+        l, m
+            1D l and m coordinates (already broadcast with each other)
+        out
+            Output array
+        """
+        for freq_idx in numba.prange(xf.shape[0]):
+            # Frequency-specific 1D arrays
+            x = xf[freq_idx]
+            y = yf[freq_idx]
+            ap = aperture[freq_idx]
+            coeff1 = _expjm2pi(np.outer(l, x))
+            coeff2 = _expjm2pi(np.outer(m, y))
+            tmp = coeff2 @ ap
+            out_chunk = out[freq_idx]
+            for lm_idx in range(l.shape[0]):
+                out_chunk[lm_idx] = np.dot(tmp[lm_idx], coeff1[lm_idx]).real
+
     def _sample_altaz_jones(
             self, l: np.ndarray, m: np.ndarray, frequency: u.Quantity,
             frame: Union[AltAzFrame, RADecFrame], output_type: OutputType, *,
@@ -647,9 +681,10 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         assert l.dtype == np.float32
         assert m.dtype == np.float32
 
-        out_shape = frequency.shape + l.shape + (2, 2)
+        matrix_shape = (2, 2) if output_type != OutputType.UNPOLARIZED_POWER else ()
+        out_shape = frequency.shape + l.shape + matrix_shape
         if out is None:
-            out = np.empty(out_shape, np.complex64)
+            out = np.empty(out_shape, _out_dtype(output_type))
         elif out.shape != out_shape:
             raise ValueError(f'out must have shape {out_shape}, not {out.shape}')
 
@@ -657,15 +692,36 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         # l/m/freq, so flatten. Assign to shape instead of reshape to ensure
         # no copying.
         out_view = out.view()
-        out_view.shape = (frequency.size, l.size, 2, 2)
+        out_view.shape = (frequency.size, l.size) + matrix_shape
         flat_frequency = frequency.ravel()
 
         # Compute x and y in wavelengths
         wavenumber = flat_frequency.to('m^-1', equivalencies=u.spectral())
-        xf = _asarray(np.multiply.outer(wavenumber, self.x), np.float32)
-        yf = _asarray(np.multiply.outer(wavenumber, self.y), np.float32)
         samples = self._prepare_samples(flat_frequency)
-        self._sample_impl(samples, xf, yf, l.ravel(), m.ravel(), out_view)
+        if output_type == OutputType.UNPOLARIZED_POWER:
+            # Get coordinates for the convolution of samples with samples.conj()
+            x = np.arange(-samples.shape[-1] + 1, samples.shape[-1]) * self.x_step
+            y = np.arange(-samples.shape[-2] + 1, samples.shape[-2]) * self.y_step
+            xf = _asarray(np.multiply.outer(wavenumber, x), np.float32)
+            yf = _asarray(np.multiply.outer(wavenumber, y), np.float32)
+            # Take autocorrelation of samples. This is equivalent
+            # to squared magnitude in the beam plane. scipy.signal.correlate
+            # would be preferrable as it automatically determines whether to
+            # use an FFT or direct convolution (and handles the
+            # conjugate-and-reverse itself), but it doesn't take an `axes`
+            # argument.
+            # scipy.signal.choose_conv_method suggests that FFT is better for 8x8
+            # or larger, so we just use it directly.
+            samples = scipy.signal.fftconvolve(
+                samples, samples[..., ::-1, ::-1].conj(), axes=(-2, -1))
+            # Add along Jones axes and scale by 1/2 to get appropriate value for
+            # UNPOLARIZED_POWER
+            samples = samples.sum(axis=(1, 2)) * 0.5
+            self._sample_power_impl(samples, xf, yf, l.ravel(), m.ravel(), out_view)
+        else:
+            xf = _asarray(np.multiply.outer(wavenumber, self.x), np.float32)
+            yf = _asarray(np.multiply.outer(wavenumber, self.y), np.float32)
+            self._sample_impl(samples, xf, yf, l.ravel(), m.ravel(), out_view)
 
         # Check if there are any points that may lie outside the valid l/m
         # region. If not (common case) we can avoid computing masks.
@@ -682,7 +738,8 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
                 | (np.multiply.outer(wavenumber, np.abs(m)) > limit_m)
             )
             # Add the axes for the Jones matrix dimensions
-            invalid = invalid[..., np.newaxis, np.newaxis]
+            if output_type != OutputType.UNPOLARIZED_POWER:
+                invalid = invalid[..., np.newaxis, np.newaxis]
             np.copyto(out, np.nan, where=invalid)
 
         # Convert Jones matrices from HV basis to XY if needed
@@ -726,7 +783,7 @@ class PrimaryBeamAperturePlane(PrimaryBeam):
         l_ = _asarray(l_, np.float32)
         m_ = _asarray(m_, np.float32)
 
-        if output_type in {OutputType.JONES_XY, OutputType.JONES_HV}:
+        if output_type in {OutputType.JONES_XY, OutputType.JONES_HV, OutputType.UNPOLARIZED_POWER}:
             return self._sample_altaz_jones(l_, m_, frequency, frame, output_type, out=out)
         else:
             jones = self._sample_altaz_jones(l_, m_, frequency, frame, output_type)
