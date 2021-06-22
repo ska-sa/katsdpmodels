@@ -14,26 +14,9 @@
 # limitations under the License.
 ################################################################################
 
-"""Local Sky Models
-Local sky
-model_type: local_sky
-model_format: katpoint_catalogue
-target: flux_density/name, where flux_density is either perceived or true, and name is the J-name
-for the calibrator e.g. J1441+3030
-
-Local Sky has the following attributes:
-flux_density: Union[Literal[perceived], Literal[ true]] -  to indicate whether the flux densities
-                in the model have been modulated by a primary beam or not (and which matches the
-                target). In the MeerKAT+ era, perceived will not be used as there will no longer
-                be a common perceived sky.
-
-Primary_beam: Optional[models.Primary_Beam] - this exists here so that calibration can use the same
-                beam used to derive this sky model to predict visibilities
-
-Individual components are stored in a dataset called components, which is an array of strings, each
-                in katpoint format. katpoint.Catalogue has been extended to support wsclean sources.
-"""
-from typing import Any, ClassVar, Optional, Type, TypeVar, Union
+"""Local Sky Models"""
+import enum
+from typing import Any, ClassVar, Optional, Type, TypeVar, Union, TextIO
 
 import numpy as np
 from typing_extensions import Literal
@@ -77,9 +60,31 @@ class NoPhaseCentreError(Exception):
     """Attempted to get the phase centre target, but it hasn't been se"""
     pass
 
+class FluxDensity(enum.Enum):
+    PERCEIVED = '1'
+    TRUE = '2'
 
 class LocalSkyModel(models.SimpleHDF5Model):
-    """ Base class for sky models """
+    """ Base class for sky models
+    Local sky
+    model_type: local_sky
+    model_format: katpoint_catalogue
+    target: flux_density/name, where flux_density is either perceived or true, and name is the
+    J-name for the calibrator e.g. J1441+3030
+
+    Local Sky has the following attributes:
+    flux_density: Union[Literal[perceived], Literal[ true]] -  to indicate whether the flux
+                    densities in the model have been modulated by a primary beam or not (and which
+                    matches the target). In the MeerKAT+ era, perceived will not be used as there
+                    will no longer be a common perceived sky.
+
+    Primary_beam: Optional[models.Primary_Beam] - this exists here so that calibration can use the
+                    same beam used to derive this sky model to predict visibilities.
+
+    Individual components are stored in a dataset called components, which is an array of strings,
+                    each in katpoint format. katpoint.Catalogue has been extended to support
+                    wsclean sources.
+    """
     model_type: ClassVar[Literal['lsm']] = 'lsm'
 
     # Methods are not marked @abstractmethod as it causes issues with mypy:
@@ -90,12 +95,27 @@ class LocalSkyModel(models.SimpleHDF5Model):
         """Minimum and maximum frequency covered by the model."""
         raise NotImplementedError()  # pragma: nocover
 
+    @property
+    def flux_density(self) -> FluxDensity:
+        """ enum to indicates whether the flux densities in the model have been modulated by a
+        primary beam or not"""
+        raise NotImplementedError()  # pragma: nocover
+
+
     @classmethod
     def from_hdf5(cls, hdf5: h5py.File) -> 'LocalSkyModel':
         raise NotImplementedError()  # pragma: nocover
 
     def to_hdf5(self, hdf5: h5py.File) -> None:
         raise NotImplementedError()  # pragma: nocover
+
+    @classmethod
+    def from_file(cls, f: TextIO) -> 'LocalSkyModel':
+        raise NotImplementedError()  # pragma: nocover
+
+    def to_file(self, f: TextIO) -> None:
+        raise NotImplementedError()  # pragma: nocover
+
 
 
 def catalogue_from_telstate(telstate: Union[katsdptelstate.TelescopeState,
@@ -193,10 +213,10 @@ class KatpointSkyModel(LocalSkyModel):
                  pc: Optional[katpoint.Target] = None,
                  pb: Optional[PrimaryBeam] = None):
         self._cat = cat
-        if pb:
-            self._PBModel = pb
         if pc:
             self._PhaseCentre = pc
+        if pb:
+            self._PBModel = pb
         super().__init__()
 
     @property

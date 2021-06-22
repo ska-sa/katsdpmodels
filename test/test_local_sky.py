@@ -58,16 +58,6 @@ def test_flux_density(dummy_local_sky: KatpointSkyModel):
 
 
 def test_phase_centre(dummy_local_sky: KatpointSkyModel):
-    # phase_centre = np.array([300, -60]) * units.deg  # RA 20.0
     model = dummy_local_sky
-    assert model._PhaseCentre is not None
+    assert model.PhaseCentre() is not None
 
-
-def test_to_hdf5(dummy_local_sky: KatpointSkyModel):
-    model = dummy_local_sky
-    f = h5py.File('test_cat.h5')
-    model.to_hdf5(f)
-    f.close()
-    # newmodel = KatpointSkyModel.from_hdf5('test_cat.h5')
-    # assert newmodel.type is KatpointSkyModel
-    os.remove('test_cat.h5')
