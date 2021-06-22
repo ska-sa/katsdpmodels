@@ -14,7 +14,25 @@
 # limitations under the License.
 ################################################################################
 
-"""Local Sky Models"""
+"""Local Sky Models
+Local sky
+model_type: local_sky
+model_format: katpoint_catalogue
+target: flux_density/name, where flux_density is either perceived or true, and name is the J-name
+for the calibrator e.g. J1441+3030
+
+Local Sky has the following attributes:
+flux_density: Union[Literal[perceived], Literal[ true]] -  to indicate whether the flux densities
+                in the model have been modulated by a primary beam or not (and which matches the
+                target). In the MeerKAT+ era, perceived will not be used as there will no longer
+                be a common perceived sky.
+
+Primary_beam: Optional[models.Primary_Beam] - this exists here so that calibration can use the same
+                beam used to derive this sky model to predict visibilities
+
+Individual components are stored in a dataset called components, which is an array of strings, each
+                in katpoint format. katpoint.Catalogue has been extended to support wsclean sources.
+"""
 from typing import Any, ClassVar, Optional, Type, TypeVar, Union
 
 import numpy as np
@@ -63,13 +81,14 @@ class NoPhaseCentreError(Exception):
 class LocalSkyModel(models.SimpleHDF5Model):
     """ Base class for sky models """
     model_type: ClassVar[Literal['lsm']] = 'lsm'
+
     # Methods are not marked @abstractmethod as it causes issues with mypy:
     # https://github.com/python/mypy/issues/4717
 
     @property
     def PBModel(self) -> PrimaryBeam:
         """Minimum and maximum frequency covered by the model."""
-        raise NotImplementedError()      # pragma: nocover
+        raise NotImplementedError()  # pragma: nocover
 
     @classmethod
     def from_hdf5(cls, hdf5: h5py.File) -> 'LocalSkyModel':
