@@ -17,7 +17,7 @@
 """Local Sky Models"""
 import enum
 from pathlib import Path
-from typing import Any, ClassVar, Optional, Type, TypeVar, Union, TextIO
+from typing import Any, ClassVar, Optional, Type, TypeVar, Union, BinaryIO
 
 import numpy as np
 from typing_extensions import Literal
@@ -29,8 +29,7 @@ except ImportError:
 
 import logging
 import urllib
-
-import h5py
+import io
 import katdal
 import katpoint
 import katsdptelstate
@@ -42,13 +41,14 @@ import astropy.units as units
 
 logger = logging.getLogger(__name__)
 
-_C = TypeVar('_C', bound='ComponentSkyModel')
 _K = TypeVar('_K', bound='KatpointSkyModel')
+_L = TypeVar('_L', bound='LocalSkyModel')
 
+# use a type alias for file_like objects, as in `models.py`
+_FileLike = Union[io.IOBase, io.BytesIO, BinaryIO]
 
 class NoSkyModelError(Exception):
-    """Attempted to load a sky model for continuum subtraction but it does not exist at the
-    specified location """
+    """Attempted to load a sky model but it does not exist"""
     pass
 
 
@@ -58,7 +58,7 @@ class NoPrimaryBeamError(Exception):
 
 
 class NoPhaseCentreError(Exception):
-    """Attempted to get the phase centre target, but it hasn't been se"""
+    """Attempted to get the phase centre target, but it hasn't been set"""
     pass
 
 class FluxDensity(enum.Enum):
@@ -82,9 +82,8 @@ class LocalSkyModel(models.Model):
     Primary_beam: Optional[models.Primary_Beam] - this exists here so that calibration can use the
                     same beam used to derive this sky model to predict visibilities.
 
-    Individual components are stored in a dataset called components, which is an array of strings,
-                    each in katpoint format. katpoint.Catalogue has been extended to support
-                    wsclean sources.
+    Individual components are stored in a katpoint.Catalogue called components.
+                    TODO katpoint.Catalogue has been extended to support wsclean sources.
     """
     model_type: ClassVar[Literal['lsm']] = 'lsm'
 
@@ -92,22 +91,22 @@ class LocalSkyModel(models.Model):
     # https://github.com/python/mypy/issues/4717
 
     @property
-    def PBModel(self) -> PrimaryBeam:
+    def PBModel(self) -> Optional[PrimaryBeam]:
         """Minimum and maximum frequency covered by the model."""
         raise NotImplementedError()  # pragma: nocover
 
     @property
-    def flux_density(self) -> FluxDensity:
+    def flux_density(self) -> Union[Literal[FluxDensity.TRUE], Literal[FluxDensity.PERCEIVED]]:
         """ enum to indicates whether the flux densities in the model have been modulated by a
         primary beam or not"""
         raise NotImplementedError()  # pragma: nocover
 
     @classmethod
-    def from_file(cls, file: Union[str, Path, TextIO], url: str, *,
+    def from_file(cls, file: Union[str, Path, _FileLike], url: str, *,
                   content_type: Optional[str] = None) -> 'LocalSkyModel':
         raise NotImplementedError()  # pragma: nocover
 
-    def to_file(self, file: Union[str, Path, TextIO], *,
+    def to_file(self, file: Union[str, Path, _FileLike], *,
                             content_type: Optional[str] = None) -> None:
         raise NotImplementedError()  # pragma: nocover
 
@@ -206,7 +205,7 @@ class KatpointSkyModel(LocalSkyModel):
     def __init__(self, cat: katpoint.Catalogue,
                  pc: Optional[katpoint.Target] = None,
                  pb: Optional[PrimaryBeam] = None):
-        self._cat = cat
+        self._components = cat  # TODO:
         if pc:
             self._PhaseCentre = pc
         if pb:
@@ -238,7 +237,7 @@ class KatpointSkyModel(LocalSkyModel):
     @units.quantity_input(wavelength=units.m, equivalencies=units.spectral())
     def flux_density(self, wavelength):
         freq_MHz = wavelength.to(units.MHz, equivalencies=units.spectral()).value
-        out = np.stack([source.flux_density_stokes(freq_MHz) for source in self._catalogue])
+        out = np.stack([source.flux_density_stokes(freq_MHz) for source in self._components])
         return np.nan_to_num(out, copy=False)
 
     @classmethod
@@ -246,27 +245,12 @@ class KatpointSkyModel(LocalSkyModel):
         return cls(cat)
 
     @classmethod
-    def from_hdf5(cls: Type[_K], hdf5: h5py.File) -> _K:
-        cat = models.get_hdf5_dataset(hdf5, 'katpoint_catalogue')
-        return cls(cat)
+    def from_file(cls: Type[_K], file: Union[str, Path, _FileLike], url: str, *,
+                  content_type: Optional[str] = None) -> _K:
+        pass  # return cls(cat)
 
-    def to_hdf5(self, hdf5: h5py.File) -> None:
-        hdf5.attrs['cat'] = self._cat
-        hdf5.create_dataset('cat', data=self._cat, track_times=False)
+    def to_file(self, file: Union[str, Path, _FileLike], *,
+                  content_type: Optional[str] = None) -> None:
+        pass
 
 
-class ComponentSkyModel(LocalSkyModel):
-    model_format: ClassVar[Literal['skymodel']] = 'skymodel'
-
-    def __init__(self, cat):
-        self._cat = cat
-        super().__init__()
-
-    @classmethod
-    def from_hdf5(cls: Type[_C], hdf5: h5py.File) -> _C:
-        cat = models.get_hdf5_dataset(hdf5, 'component_catalogue')
-        return cls(cat)
-
-    def to_hdf5(self, hdf5: h5py.File) -> None:
-        hdf5.attrs['cat'] = self._cat
-        hdf5.create_dataset('cat', data=self._cat, track_times=False)
