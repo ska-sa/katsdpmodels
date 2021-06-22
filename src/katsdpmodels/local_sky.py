@@ -16,6 +16,7 @@
 
 """Local Sky Models"""
 import enum
+from pathlib import Path
 from typing import Any, ClassVar, Optional, Type, TypeVar, Union, TextIO
 
 import numpy as np
@@ -64,7 +65,7 @@ class FluxDensity(enum.Enum):
     PERCEIVED = '1'
     TRUE = '2'
 
-class LocalSkyModel(models.SimpleHDF5Model):
+class LocalSkyModel(models.Model):
     """ Base class for sky models
     Local sky
     model_type: local_sky
@@ -101,21 +102,14 @@ class LocalSkyModel(models.SimpleHDF5Model):
         primary beam or not"""
         raise NotImplementedError()  # pragma: nocover
 
-
     @classmethod
-    def from_hdf5(cls, hdf5: h5py.File) -> 'LocalSkyModel':
+    def from_file(cls, file: Union[str, Path, TextIO], url: str, *,
+                  content_type: Optional[str] = None) -> 'LocalSkyModel':
         raise NotImplementedError()  # pragma: nocover
 
-    def to_hdf5(self, hdf5: h5py.File) -> None:
+    def to_file(self, file: Union[str, Path, TextIO], *,
+                            content_type: Optional[str] = None) -> None:
         raise NotImplementedError()  # pragma: nocover
-
-    @classmethod
-    def from_file(cls, f: TextIO) -> 'LocalSkyModel':
-        raise NotImplementedError()  # pragma: nocover
-
-    def to_file(self, f: TextIO) -> None:
-        raise NotImplementedError()  # pragma: nocover
-
 
 
 def catalogue_from_telstate(telstate: Union[katsdptelstate.TelescopeState,
