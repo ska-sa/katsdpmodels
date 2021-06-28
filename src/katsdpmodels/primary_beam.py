@@ -310,6 +310,7 @@ class PrimaryBeam(models.SimpleHDF5Model):
         A sample is returned for each combination of a position (given by `l`,
         `m`) with a frequency. The dimensions of the output will be (in
         order):
+
         - those of `frequency`
         - those of `l`, `m` and `frame` (which are broadcast with each other)
         - the row and column for matrices if `output_type` is one of the matrix
