@@ -28,9 +28,9 @@ except ImportError:
     ArrayLike = Any  # type: ignore
 
 import logging
-import urllib
+import urllib.parse
 import io
-import katdal
+import katdal.sensordata
 import katpoint
 import katsdptelstate
 from katsdpmodels.primary_beam import PrimaryBeam
@@ -47,6 +47,7 @@ _L = TypeVar('_L', bound='LocalSkyModel')
 # use a type alias for file_like objects, as in `models.py`
 _FileLike = Union[io.IOBase, io.BytesIO, BinaryIO]
 
+
 class NoSkyModelError(Exception):
     """Attempted to load a sky model but it does not exist"""
     pass
@@ -61,9 +62,11 @@ class NoPhaseCentreError(Exception):
     """Attempted to get the phase centre target, but it hasn't been set"""
     pass
 
+
 class FluxDensity(enum.Enum):
     PERCEIVED = '1'
     TRUE = '2'
+
 
 class LocalSkyModel(models.Model):
     """ Base class for sky models
@@ -91,7 +94,7 @@ class LocalSkyModel(models.Model):
     # https://github.com/python/mypy/issues/4717
 
     @property
-    def PBModel(self) -> Optional[PrimaryBeam]:
+    def pb_model(self) -> Optional[PrimaryBeam]:
         """Minimum and maximum frequency covered by the model."""
         raise NotImplementedError()  # pragma: nocover
 
@@ -107,7 +110,7 @@ class LocalSkyModel(models.Model):
         raise NotImplementedError()  # pragma: nocover
 
     def to_file(self, file: Union[str, Path, _FileLike], *,
-                            content_type: Optional[str] = None) -> None:
+                content_type: Optional[str] = None) -> None:
         raise NotImplementedError()  # pragma: nocover
 
 
@@ -173,11 +176,12 @@ def catalogue_from_telstate(telstate: Union[katsdptelstate.TelescopeState,
 
 
 def catalogue_from_katpoint(url: str) -> katpoint.Catalogue:
-    """Load a katpoint sky model from file.
+    """Load a katpoint sky model from file. Katpoint stores catalogues as `.csv' files.
     Parameters
     ----------
     url : str
-         A ``file://`` URL for a katpoint catalogue file
+         A ``file://`` URL for a katpoint catalogue file (in CSV format -- although this need
+         not be the extension of the url supplied)
 
     Raises
     ------
@@ -213,24 +217,24 @@ class KatpointSkyModel(LocalSkyModel):
         super().__init__()
 
     @property
-    def PBModel(self) -> PrimaryBeam:
+    def pb_model(self) -> PrimaryBeam:
         if self._PBModel is None:
             raise NoPrimaryBeamError
         return self._PBModel
 
-    @PBModel.setter
-    def PBModel(self, pb: PrimaryBeam) -> None:
+    @pb_model.setter
+    def pb_model(self, pb: PrimaryBeam) -> None:
         # check pb exists and is accessible
         self._PBModel = pb
 
     @property
-    def PhaseCentre(self) -> katpoint.Target:
+    def phase_centre(self) -> katpoint.Target:
         if self._PhaseCentre is None:
             raise NoPhaseCentreError
         return self._PhaseCentre
 
-    @PhaseCentre.setter
-    def PhaseCentre(self, pc: katpoint.Target) -> None:
+    @phase_centre.setter
+    def phase_centre(self, pc: katpoint.Target) -> None:
         # check pb exists and is accessible
         self._PhaseCentre = pc
 
@@ -250,7 +254,5 @@ class KatpointSkyModel(LocalSkyModel):
         pass  # return cls(cat)
 
     def to_file(self, file: Union[str, Path, _FileLike], *,
-                  content_type: Optional[str] = None) -> None:
+                content_type: Optional[str] = None) -> None:
         pass
-
-
