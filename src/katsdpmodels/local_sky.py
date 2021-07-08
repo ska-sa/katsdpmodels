@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 _K = TypeVar('_K', bound='KatpointSkyModel')
 _L = TypeVar('_L', bound='LocalSkyModel')
 
-# use a type alias for file_like objects, as in `models.py`
+# use a type alias for file_like objects
 _FileLike = Union[io.IOBase, io.BytesIO, BinaryIO]
 
 
@@ -101,7 +101,7 @@ class LocalSkyModel(models.Model):
     @property
     def flux_density(self) -> Union[Literal[FluxDensity.TRUE], Literal[FluxDensity.PERCEIVED]]:
         """ enum to indicates whether the flux densities in the model have been modulated by a
-        primary beam or not"""
+        primary beam or not """
         raise NotImplementedError()  # pragma: nocover
 
     @classmethod
@@ -114,12 +114,98 @@ class LocalSkyModel(models.Model):
         raise NotImplementedError()  # pragma: nocover
 
 
+
+class KatpointSkyModel(LocalSkyModel):
+    model_format: ClassVar[Literal['katpoint_catalogue']] = 'katpoint_catalogue'
+
+    def __init__(self, cat: Optional[katpoint.Catalogue] = None,
+                 pc: Optional[katpoint.Target] = None,
+                 pb: Optional[PrimaryBeam] = None):
+        if cat:
+            self._components = cat  # TODO:
+        self._PhaseCentre = pc
+        self._PBModel = pb
+        super().__init__()
+
+    @property
+    def pb_model(self) -> PrimaryBeam:
+        if self._PBModel is None:
+            raise NoPrimaryBeamError
+        return self._PBModel
+
+    @pb_model.setter
+    def pb_model(self, pb: PrimaryBeam) -> None:
+        # TODO check pb exists and is accessible
+        self._PBModel = pb
+
+    @property
+    def phase_centre(self) -> katpoint.Target:
+        if self._PhaseCentre is None:
+            raise NoPhaseCentreError
+        return self._PhaseCentre
+
+    @phase_centre.setter
+    def phase_centre(self, pc: katpoint.Target) -> None:
+        self._PhaseCentre = pc
+
+    @units.quantity_input(wavelength=units.m, equivalencies=units.spectral())
+    def flux_density(self, wavelength):
+        freq_MHz = wavelength.to(units.MHz, equivalencies=units.spectral()).value
+        out = np.stack([source.flux_density_stokes(freq_MHz) for source in self._components])
+        return np.nan_to_num(out, copy=False)
+
+    @classmethod
+    def from_katpoint_catalogue(cls: Type[_K], cat: katpoint.Catalogue) -> _K:
+        return cls(cat)
+
+    @classmethod
+    def from_file(cls: Type[_K], file: Union[str, Path, _FileLike], url: str, *,
+                  content_type: Optional[str] = None) -> 'KatpointSkyModel':
+        if url:
+            cat = catalogue_from_katpoint(url)
+            return KatpointSkyModel(cat)
+        else:
+            return KatpointSkyModel()
+
+    def to_file(self, file: Union[str, Path, _FileLike], *,
+                content_type: Optional[str] = None) -> None:
+        pass
+
+
+def catalogue_from_katpoint(url: str) -> katpoint.Catalogue:
+    """Load a katpoint sky model from file. Katpoint stores catalogues as `.csv' files.
+    Parameters
+    ----------
+    url : str
+         A ``file://`` URL for a katpoint catalogue file (in CSV format -- although this need
+         not be the extension of the url supplied)
+
+    Raises
+    ------
+        ValueError
+            if `format` was not recognised, the URL doesn't contain the
+            expected query parameters, or the URL scheme is not supported
+        IOError, OSError
+            if there was a low-level error reading a file
+        Exception
+            any exception raised by katdal in opening the file
+
+    Returns
+    -------
+        KatpointSkyModel
+    """
+    if urllib.parse.urlparse(url, scheme='file').scheme != 'file':
+        raise ValueError('Only file:// URLs are supported for katpoint sky model format')
+    with open(urllib.parse.urlparse(url, scheme='file').path) as f:
+        return katpoint.Catalogue(f)
+
+
 def catalogue_from_telstate(telstate: Union[katsdptelstate.TelescopeState,
                                             katdal.sensordata.TelstateToStr],
                             capture_block_id: str,
                             continuum: Union[str, None],
                             target: katpoint.Target) -> katpoint.Catalogue:
-    """Extract a katpoint catalogue written by katsdpcontim.
+    """Extract a katpoint catalogue written to katsdptelstate.
     Parameters
     ----------
     telstate : :class:`katsdptelstate.TelescopeState` or :class:`katdal.sensordata.TelstateToStr`
@@ -173,86 +259,3 @@ def catalogue_from_telstate(telstate: Union[katsdptelstate.TelescopeState,
     except KeyError:
         logger.debug('KeyError', exc_info=True)
     raise NoSkyModelError('Sky model for target {} not found'.format(target.name))
-
-
-def catalogue_from_katpoint(url: str) -> katpoint.Catalogue:
-    """Load a katpoint sky model from file. Katpoint stores catalogues as `.csv' files.
-    Parameters
-    ----------
-    url : str
-         A ``file://`` URL for a katpoint catalogue file (in CSV format -- although this need
-         not be the extension of the url supplied)
-
-    Raises
-    ------
-        ValueError
-            if `format` was not recognised, the URL doesn't contain the
-            expected query parameters, or the URL scheme is not supported
-        IOError, OSError
-            if there was a low-level error reading a file
-        Exception
-            any exception raised by katdal in opening the file
-
-    Returns
-    -------
-        KatpointSkyModel
-    """
-    if urllib.parse.urlparse(url, scheme='file').scheme != 'file':
-        raise ValueError('Only file:// URLs are supported for katpoint sky model format')
-    with open(urllib.parse.urlparse(url, scheme='file').path) as f:
-        return katpoint.Catalogue(f)
-
-
-class KatpointSkyModel(LocalSkyModel):
-    model_format: ClassVar[Literal['katpoint_catalogue']] = 'katpoint_catalogue'
-
-    def __init__(self, cat: katpoint.Catalogue,
-                 pc: Optional[katpoint.Target] = None,
-                 pb: Optional[PrimaryBeam] = None):
-        self._components = cat  # TODO:
-        if pc:
-            self._PhaseCentre = pc
-        if pb:
-            self._PBModel = pb
-        super().__init__()
-
-    @property
-    def pb_model(self) -> PrimaryBeam:
-        if self._PBModel is None:
-            raise NoPrimaryBeamError
-        return self._PBModel
-
-    @pb_model.setter
-    def pb_model(self, pb: PrimaryBeam) -> None:
-        # check pb exists and is accessible
-        self._PBModel = pb
-
-    @property
-    def phase_centre(self) -> katpoint.Target:
-        if self._PhaseCentre is None:
-            raise NoPhaseCentreError
-        return self._PhaseCentre
-
-    @phase_centre.setter
-    def phase_centre(self, pc: katpoint.Target) -> None:
-        # check pb exists and is accessible
-        self._PhaseCentre = pc
-
-    @units.quantity_input(wavelength=units.m, equivalencies=units.spectral())
-    def flux_density(self, wavelength):
-        freq_MHz = wavelength.to(units.MHz, equivalencies=units.spectral()).value
-        out = np.stack([source.flux_density_stokes(freq_MHz) for source in self._components])
-        return np.nan_to_num(out, copy=False)
-
-    @classmethod
-    def from_katpoint_catalogue(cls: Type[_K], cat: katpoint.Catalogue) -> _K:
-        return cls(cat)
-
-    @classmethod
-    def from_file(cls: Type[_K], file: Union[str, Path, _FileLike], url: str, *,
-                  content_type: Optional[str] = None) -> _K:
-        pass  # return cls(cat)
-
-    def to_file(self, file: Union[str, Path, _FileLike], *,
-                content_type: Optional[str] = None) -> None:
-        pass

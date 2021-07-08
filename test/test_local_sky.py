@@ -68,12 +68,8 @@ def test_phase_centre(dummy_local_sky: KatpointSkyModel):
     assert model.phase_centre is not None
 
 
-def test_catalogue_from_katpoint_csv(dummy_local_sky: KatpointSkyModel,
-                                     dummy_catalogue: katpoint.Catalogue):
-    model = dummy_local_sky
+def test_catalogue_from_katpoint_csv(dummy_catalogue: katpoint.Catalogue):
     cat = dummy_catalogue
     cat.save('example_catalogue_from_katpoint.csv')
     cat2 = katsdpmodels.local_sky.catalogue_from_katpoint('example_catalogue_from_katpoint.csv')
-    assert cat == cat2 #TODO define equality relationship
-
-
+    assert cat == cat2 # TODO define equality relationship
