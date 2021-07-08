@@ -114,7 +114,6 @@ class LocalSkyModel(models.Model):
         raise NotImplementedError()  # pragma: nocover
 
 
-
 class KatpointSkyModel(LocalSkyModel):
     model_format: ClassVar[Literal['katpoint_catalogue']] = 'katpoint_catalogue'
 

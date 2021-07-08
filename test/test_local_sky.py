@@ -17,23 +17,22 @@
 """Tests for :mod:`katsdpmodels.local_sky`"""
 
 # from typing import Generator
-import os
-
-import h5py
 import pytest
 import katsdpmodels.local_sky
 import katpoint
 import astropy.units as units
 import numpy as np
 
-from katsdpmodels.local_sky import *
+from katsdpmodels.local_sky import KatpointSkyModel
 
 
 _TRG_A = 'A, radec, 20:00:00.00, -60:00:00.0, (200.0 12000.0 1.0 0.5)'
 _TRG_B = 'B, radec, 8:00:00.00, 60:00:00.0, (200.0 12000.0 2.0)'
-_TRG_C = 'C, radec, 21:00:00.00, -60:00:00.0, (800.0 43200.0 1.0 0.0 0.0 0.0 0.0 0.0 1.0 0.8 -0.7 0.6)'
+_TRG_C = 'C, radec, 21:00:00.00, -60:00:00.0, (800.0 43200.0 1.0 0.0 0.0 0.0 0.0 0.0 1.0 0.8 ' \
+         '-0.7 0.6)'
 _TRG_WSC_A = ''
 _PC = 'pc, radec, 20:00:00.00, -60:00:00.0'
+
 
 @pytest.fixture
 def dummy_catalogue() -> katpoint.Catalogue:
@@ -41,6 +40,7 @@ def dummy_catalogue() -> katpoint.Catalogue:
     t2 = katpoint.Target(_TRG_B)
     t3 = katpoint.Target(_TRG_C)
     return katpoint.Catalogue([t1, t2, t3])
+
 
 @pytest.fixture
 def dummy_local_sky(dummy_catalogue: katpoint.Catalogue) -> KatpointSkyModel:
@@ -72,4 +72,4 @@ def test_catalogue_from_katpoint_csv(dummy_catalogue: katpoint.Catalogue):
     cat = dummy_catalogue
     cat.save('example_catalogue_from_katpoint.csv')
     cat2 = katsdpmodels.local_sky.catalogue_from_katpoint('example_catalogue_from_katpoint.csv')
-    assert cat == cat2 # TODO define equality relationship
+    assert cat == cat2  # TODO define equality relationship
