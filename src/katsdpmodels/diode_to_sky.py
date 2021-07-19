@@ -16,13 +16,11 @@
 
 """Diode-to-Sky Models"""
 
-import astropy.units as units
-import numpy as np
 import logging
-
+import io
 
 from pathlib import Path
-from typing import Any, ClassVar, Optional, Type, TypeVar, Union
+from typing import Any, BinaryIO, ClassVar, Optional, TypeVar, Union
 from typing_extensions import Literal
 
 try:
@@ -30,16 +28,12 @@ try:
 except ImportError:
     ArrayLike = Any  # type: ignore
 
-import katdal.sensordata
-import katpoint
-import katsdptelstate
-
 from . import models
 
 
 logger = logging.getLogger(__name__)
 
-_D = TypeVar('_K', bound='DiodeToSkyModel')
+_D = TypeVar('_D', bound='DiodeToSkyModel')
 
 # use a type alias for file_like objects
 _FileLike = Union[io.IOBase, io.BytesIO, BinaryIO]
@@ -64,7 +58,7 @@ class DiodeToSkyModel(models.Model):
 
     @classmethod
     def from_file(cls, file: Union[str, Path, _FileLike], url: str, *,
-                  content_type: Optional[str] = None) -> 'LocalSkyModel':
+                  content_type: Optional[str] = None) -> 'DiodeToSkyModel':
         raise NotImplementedError()  # pragma: nocover
 
     def to_file(self, file: Union[str, Path, _FileLike], *,
