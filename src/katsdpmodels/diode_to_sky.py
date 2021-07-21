@@ -20,7 +20,7 @@ import logging
 import io
 import scipy.interpolate
 
-from pathlib import Path 
+from pathlib import Path
 from typing import Any, BinaryIO, ClassVar, Optional, TypeVar, Union
 from typing_extensions import Literal
 
@@ -51,12 +51,11 @@ class DiodeToSkyModel(models.Model):
     model_type: diode_to_sky
     model_format: ??
     target: ??
-    
+
     Diode-to-Sky has the following attributes:
     TODO
     """
     model_type: ClassVar[Literal['dsm']] = 'dsm'
-    
 
     @classmethod
     def from_file(cls, file: Union[str, Path, _FileLike], url: str, *,
@@ -72,10 +71,10 @@ class BSplineModel(DiodeToSkyModel):
     """ captures set of knot locations and spline parameters as a scipy bspline object"""
     model_format: ClassVar[Literal['ScipyBSpline']] = 'ScipyBSpline'
 
-    def __init__(self, *, 
-                 knots: ArrayLike, 
-                 coefficients: ArrayLike, 
-                 degree: int, 
+    def __init__(self, *,
+                 knots: ArrayLike,
+                 coefficients: ArrayLike,
+                 degree: int,
                  target: str) -> None:
         self.knots = knots
         self.coefficients = coefficients
@@ -83,6 +82,6 @@ class BSplineModel(DiodeToSkyModel):
         self.target = target
         self.bspline = scipy.interpolate.BSpline(knots, coefficients, degree)
 
-    
+
 class CSplineModel(DiodeToSkyModel):
     pass

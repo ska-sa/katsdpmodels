@@ -1,6 +1,7 @@
 build
 dist
 temp
+test_data
 cover
 htmlcov
 .coverage
