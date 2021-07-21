@@ -71,16 +71,22 @@ class BSplineModel(DiodeToSkyModel):
     """ captures set of knot locations and spline parameters as a scipy bspline object"""
     model_format: ClassVar[Literal['ScipyBSpline']] = 'ScipyBSpline'
 
-    def __init__(self, *,
+    def __init__(self,
                  knots: ArrayLike,
                  coefficients: ArrayLike,
                  degree: int,
-                 target: str) -> None:
-        self.knots = knots
-        self.coefficients = coefficients
-        self.degree = degree
-        self.target = target
-        self.bspline = scipy.interpolate.BSpline(knots, coefficients, degree)
+                 *,
+                 band: str,
+                 antenna: Optional[str] = None,
+                 receiver: Optional[str] = None) -> None:
+        self._knots = knots
+        self._coefficients = coefficients
+        self._degree = degree
+        self._band = band
+        self._antenna = antenna
+        self._receiver = receiver
+        self._model = scipy.interpolate.BSpline(knots, coefficients, degree)
+        self._model_name = '{}_{}_{}'.format(band, antenna, receiver)
 
 
 class CSplineModel(DiodeToSkyModel):
