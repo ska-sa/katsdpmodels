@@ -18,8 +18,9 @@
 
 import logging
 import io
+import scipy.interpolate
 
-from pathlib import Path
+from pathlib import Path 
 from typing import Any, BinaryIO, ClassVar, Optional, TypeVar, Union
 from typing_extensions import Literal
 
@@ -48,13 +49,14 @@ class DiodeToSkyModel(models.Model):
     """ Base class for bandpass phase models
     Diode-to-sky model (bandpass phase model for calibration)
     model_type: diode_to_sky
-    model_format: ?? --
+    model_format: ??
     target: ??
-
+    
     Diode-to-Sky has the following attributes:
     TODO
     """
-    model_type: ClassVar[Literal['dts']] = 'dts'
+    model_type: ClassVar[Literal['dsm']] = 'dsm'
+    
 
     @classmethod
     def from_file(cls, file: Union[str, Path, _FileLike], url: str, *,
@@ -66,6 +68,21 @@ class DiodeToSkyModel(models.Model):
         raise NotImplementedError()  # pragma: nocover
 
 
-class SplineDiodeModel(DiodeToSkyModel):
-    """ captures set of 'knot' locations and spline paramters """
+class BSplineModel(DiodeToSkyModel):
+    """ captures set of knot locations and spline parameters as a scipy bspline object"""
+    model_format: ClassVar[Literal['ScipyBSpline']] = 'ScipyBSpline'
+
+    def __init__(self, *, 
+                 knots: ArrayLike, 
+                 coefficients: ArrayLike, 
+                 degree: int, 
+                 target: str) -> None:
+        self.knots = knots
+        self.coefficients = coefficients
+        self.degree = degree
+        self.target = target
+        self.bspline = scipy.interpolate.BSpline(knots, coefficients, degree)
+
+    
+class CSplineModel(DiodeToSkyModel):
     pass
