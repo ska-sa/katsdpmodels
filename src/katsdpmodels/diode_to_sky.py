@@ -168,7 +168,7 @@ class BSplineModel(DiodeToSkyModel):
         )
         hdf5.create_dataset(
             'meta',
-            data = {
+            data={
                 'receiver': self._receiver,
                 'antenna': self._antenna,
                 'band': self._band
