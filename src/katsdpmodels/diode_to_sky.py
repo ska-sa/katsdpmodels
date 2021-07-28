@@ -15,6 +15,7 @@
 ################################################################################
 
 """Diode-to-Sky Models"""
+import numpy as np
 
 import astropy.units as u
 import h5py
@@ -152,32 +153,29 @@ class BSplineModel(DiodeToSkyModel):
     @classmethod
     def from_hdf5(cls: Type[_B], hdf5: h5py.File) -> _B:
         """"""
-        components = models.get_hdf5_dataset(hdf5, 'components')
-        coefs, knots, degree = components('coefs'), components('knots'), components('degree')
-
         attrs = hdf5.attrs
         band = models.get_hdf5_attr(attrs, 'band', str, required=True)
         antenna = models.get_hdf5_attr(attrs, 'band', str, required=False)
         receiver = models.get_hdf5_attr(attrs, 'receiver', str, required=False)
+        degree = models.get_hdf5_attr(attrs, 'degree', int, required=True)
+
+        knots = models.get_hdf5_dataset(hdf5, 'knots')
+        knots = models.require_columns('knots', knots, np.float64, 1)
+        coefs = models.get_hdf5_dataset(hdf5, 'coefs')
+        coefs = models.require_columns('coefs', coefs, np.float64, 1)
 
         return cls(knots, coefs, degree, band=band, antenna=antenna, receiver=receiver)
 
     def to_hdf5(self, hdf5: h5py.File) -> None:
         """"""
         hdf5.attrs['band'] = self._band
+        hdf5.attrs['degree'] = self._degree
         if self.antenna is not None:
             hdf5.attrs['antenna'] = self._antenna
         if self.receiver is not None:
             hdf5.attrs['receiver'] = self._receiver
-        hdf5.create_dataset(
-            'components',
-            data={
-                'knots': self._knots,
-                'coefs': self._coefficients,
-                'degree': self._degree
-            },
-            track_times=False
-        )
+        hdf5.create_dataset('knots', data=self._knots, track_times=False)
+        hdf5.create_dataset('coefs', data=self._knots, track_times=False)
 
     # TODO decide:remove these?
     @classmethod
