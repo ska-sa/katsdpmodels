@@ -88,6 +88,11 @@ class DiodeToSkyModel(models.SimpleHDF5Model):
         """Minimum and maximum frequency covered by the model."""
         raise NotImplementedError()  # pragma: nocover
 
+    @property
+    def frequency_resolution(self) -> u.Quantity:
+        """Approximate frequency resolution of the model."""
+        raise NotImplementedError()      # pragma: nocover
+
     @classmethod
     def from_hdf5(cls, hdf5: h5py.File) -> 'DiodeToSkyModel':
         raise NotImplementedError()  # pragma: nocover
@@ -147,43 +152,39 @@ class BSplineModel(DiodeToSkyModel):
     @classmethod
     def from_hdf5(cls: Type[_B], hdf5: h5py.File) -> _B:
         """"""
-        bspline = models.get_hdf5_dataset(hdf5, 'bspline')
-        coefs, knots, degree = bspline.c, bspline.t, bspline.k
+        components = models.get_hdf5_dataset(hdf5, 'components')
+        coefs, knots, degree = components('coefs'), components('knots'), components('degree')
 
-        meta = models.get_hdf5_dataset(hdf5, 'meta')
+        attrs = hdf5.attrs
+        band = models.get_hdf5_attr(attrs, 'band', str, required=True)
+        antenna = models.get_hdf5_attr(attrs, 'band', str, required=False)
+        receiver = models.get_hdf5_attr(attrs, 'receiver', str, required=False)
 
-        return cls(knots, coefs, degree, band=meta('band'))
+        return cls(knots, coefs, degree, band=band, antenna=antenna, receiver=receiver)
 
     def to_hdf5(self, hdf5: h5py.File) -> None:
         """"""
-        hdf5.attrs['band'] = self.band
+        hdf5.attrs['band'] = self._band
         if self.antenna is not None:
-            hdf5.attrs['antenna'] = self.antenna
+            hdf5.attrs['antenna'] = self._antenna
         if self.receiver is not None:
-            hdf5.attrs['receiver'] = self.receiver
+            hdf5.attrs['receiver'] = self._receiver
         hdf5.create_dataset(
-            'bspline',
-            data=self._model,
-            track_times=False
-        )
-        hdf5.create_dataset(
-            'meta',
+            'components',
             data={
-                'receiver': self._receiver,
-                'antenna': self._antenna,
-                'band': self._band
+                'knots': self._knots,
+                'coefs': self._coefficients,
+                'degree': self._degree
             },
             track_times=False
         )
 
+    # TODO decide:remove these?
     @classmethod
     def from_file(cls: Type[_B], file: Union[str, Path, _FileLike], url: str, *,
                   content_type: Optional[str] = None) -> _B:
-        """Load a diode-to-sky model specified in `scipy.interpolate.splev` format from a file
-        or URL."""
         raise NotImplementedError
 
-    @classmethod
     def to_file(self, file: Union[str, Path, _FileLike], *,
                 content_type: Optional[str] = None) -> None:
         raise NotImplementedError
