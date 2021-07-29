@@ -96,7 +96,13 @@ class DiodeToSkyModel(models.SimpleHDF5Model):
 
     @classmethod
     def from_hdf5(cls, hdf5: h5py.File) -> 'DiodeToSkyModel':
-        raise NotImplementedError()  # pragma: nocover
+        model_format = models.get_hdf5_attr(hdf5.attrs, 'model_format', str)
+        logger.error(model_format)
+        if model_format == 'bspline':
+            return BSplineModel.from_hdf5(hdf5)
+        else:
+            raise models.ModelFormatError(
+                f'Unknown model_format {model_format!r} for {cls.model_type}')
 
     def to_hdf5(self, hdf5: h5py.File) -> None:
         raise NotImplementedError()  # pragma: nocover
@@ -104,12 +110,12 @@ class DiodeToSkyModel(models.SimpleHDF5Model):
 
 class BSplineModel(DiodeToSkyModel):
     """
-    captures set of knot locations and spline parameters as a scipy.interpolate.bspline object
+    captures set of knot locations and spline parameters
     model_format: 'scipy.interpolate.BSpline'
 
     """
 
-    model_format: ClassVar[Literal['scipy_b_spline']] = 'scipy_b_spline'
+    model_format: ClassVar[Literal['bspline']] = 'bspline'
 
     def __init__(self,
                  knots: ArrayLike,
