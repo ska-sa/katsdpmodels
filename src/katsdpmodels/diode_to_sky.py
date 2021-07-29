@@ -23,7 +23,7 @@ import logging
 import io
 import scipy.interpolate
 
-from pathlib import Path
+# from pathlib import Path
 from typing import Any, BinaryIO, ClassVar, Optional, Tuple, Type, TypeVar, Union
 from typing_extensions import Literal
 
@@ -155,7 +155,7 @@ class BSplineModel(DiodeToSkyModel):
         """"""
         attrs = hdf5.attrs
         band = models.get_hdf5_attr(attrs, 'band', str, required=True)
-        antenna = models.get_hdf5_attr(attrs, 'band', str, required=False)
+        antenna = models.get_hdf5_attr(attrs, 'antenna', str, required=False)
         receiver = models.get_hdf5_attr(attrs, 'receiver', str, required=False)
         degree = models.get_hdf5_attr(attrs, 'degree', int, required=True)
 
@@ -176,4 +176,3 @@ class BSplineModel(DiodeToSkyModel):
             hdf5.attrs['receiver'] = self._receiver
         hdf5.create_dataset('knots', data=self._knots, track_times=False)
         hdf5.create_dataset('coefs', data=self._knots, track_times=False)
-
