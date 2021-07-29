@@ -177,12 +177,3 @@ class BSplineModel(DiodeToSkyModel):
         hdf5.create_dataset('knots', data=self._knots, track_times=False)
         hdf5.create_dataset('coefs', data=self._knots, track_times=False)
 
-    # TODO decide:remove these?
-    @classmethod
-    def from_file(cls: Type[_B], file: Union[str, Path, _FileLike], url: str, *,
-                  content_type: Optional[str] = None) -> _B:
-        raise NotImplementedError
-
-    def to_file(self, file: Union[str, Path, _FileLike], *,
-                content_type: Optional[str] = None) -> None:
-        raise NotImplementedError
