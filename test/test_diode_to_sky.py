@@ -47,7 +47,7 @@ def serve_model(model_file: h5py.File) \
         -> Generator[diode_to_sky.BSplineModel, None, None]:
     path = pathlib.Path(model_file.filename)
     model_file.close()  # Ensures data is written to the file
-    with fetch_requests.fetch_model(path.as_uri(), diode_to_sky.BSplineModel) as model:
+    with fetch_requests.fetch_model(path.as_uri(), diode_to_sky.DiodeToSkyModel) as model:
         yield cast(diode_to_sky.BSplineModel, model)
 
 
