@@ -14,7 +14,17 @@
 # limitations under the License.
 ################################################################################
 
-"""System-Equivalent Flux Density Models"""
+"""System-Equivalent Flux Density Models
+Models MUST provide separate H and V SEFD.
+    Needed to simulate visibilities.
+Models MAY provide combined (Stokes-I) SEFD.
+    It’s a handy convenience for estimating image noise, but should probably be computed on the
+    fly rather than stored.
+Models SHOULD provide sensible values even at RFI-affected frequencies.
+    Needed for simulation, and looks better in an imaging report.
+Models MUST allow dish dependence.
+    Required for heterogeneous MeerKAT+ array.
+"""
 import numpy as np
 
 import astropy.units as u
@@ -36,13 +46,14 @@ from . import models
 # use a type alias for file_like objects
 _FileLike = Union[io.IOBase, io.BytesIO, BinaryIO]
 
-_B = TypeVar('_B', bound='BSplineModel')
+_B = TypeVar('_B', bound='BSplineSEFDModel')
+_P = TypeVar('_P', bound='PolySEFDModel')
 
 logger = logging.getLogger(__name__)
 
 
 class NoSEFDModelError(Exception):
-    """Attempted to load a SEFD phase model but it does not exist"""
+    """Attempted to load a SEFD model but it does not exist"""
     pass
 
 
@@ -95,7 +106,7 @@ class SEFDModel(models.SimpleHDF5Model):
         model_format = models.get_hdf5_attr(hdf5.attrs, 'model_format', str)
         logger.error(model_format)
         if model_format == 'bspline':
-            return BSplineModel.from_hdf5(hdf5)
+            return BSplineSEFDModel.from_hdf5(hdf5)
         else:
             raise models.ModelFormatError(
                 f'Unknown model_format {model_format!r} for {cls.model_type}')
@@ -104,10 +115,79 @@ class SEFDModel(models.SimpleHDF5Model):
         raise NotImplementedError()  # pragma: nocover
 
 
-class BSplineModel(SEFDModel):
+class PolySEFDModel(SEFDModel):
+    """
+    captures a polynomial SEFD model
+    model_format: 'poly'
+    """
+
+    model_format: ClassVar[Literal['poly']] = 'poly'
+
+    def __init__(self,
+                 min_frequency: u.Quantity,
+                 max_frequency: u.Quantity,
+                 coefs: u.Quantity,
+                 frequency_unit: u.Unit,
+                 correlator_efficiency: float,
+                 *,
+                 band: str,
+                 antenna: Optional[str] = None,
+                 receiver: Optional[str] = None) -> None:
+        super().__init__()
+        self._min_frequency = min_frequency
+        self._max_frequency = max_frequency
+        self._frequency_unit = frequency_unit
+        self._coefs = coefs
+        self._correlator_efficiency = correlator_efficiency
+        self._band = band
+        self._antenna = antenna
+        self._receiver = receiver
+
+    @property
+    def coefs(self) -> ArrayLike:
+        """ TODO: check that u.Quantity is ArrayLike"""
+        return self._coefs
+
+    @property
+    def antenna(self) -> Optional[str]:
+        return self._antenna
+
+    @property
+    def receiver(self) -> Optional[str]:
+        return self._receiver
+
+    @property
+    def band(self) -> str:
+        return self._band
+
+    @classmethod
+    def from_hdf5(cls: Type[_P], hdf5: h5py.File) -> _P:
+        """"""
+        attrs = hdf5.attrs
+        band = models.get_hdf5_attr(attrs, 'band', str, required=True)
+        antenna = models.get_hdf5_attr(attrs, 'antenna', str, required=False)
+        receiver = models.get_hdf5_attr(attrs, 'receiver', str, required=False)
+
+        # TODO
+        params = models.get_hdf5_dataset(hdf5, 'params')
+        params = models.require_columns('params', params, np.float64, 1)
+
+        return cls(params, band=band, antenna=antenna, receiver=receiver)
+
+    def to_hdf5(self, hdf5: h5py.File) -> None:
+        """"""
+        hdf5.attrs['band'] = self._band
+        if self.antenna is not None:
+            hdf5.attrs['antenna'] = self._antenna
+        if self.receiver is not None:
+            hdf5.attrs['receiver'] = self._receiver
+        hdf5.create_dataset('params', data=self._params, track_times=False)
+
+
+class BSplineSEFDModel(SEFDModel):
     """
     captures a BSpline SEFD model
-    model_format: 'scipy.interpolate.BSpline'
+    model_format: 'bspline'
     """
 
     model_format: ClassVar[Literal['bspline']] = 'bspline'
