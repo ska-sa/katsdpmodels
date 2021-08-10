@@ -14,9 +14,8 @@
 # limitations under the License.
 ################################################################################
 
-"""Tests for :mod:`katsdpmodels.diode_to_sky`"""
+""" Tests for :mod:`katsdpmodels.diode_to_sky`."""
 
-# import astropy.units as u
 import contextlib
 import h5py
 import io
