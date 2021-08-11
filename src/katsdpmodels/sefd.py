@@ -105,7 +105,9 @@ class SEFDModel(models.SimpleHDF5Model):
     def from_hdf5(cls, hdf5: h5py.File) -> 'SEFDModel':
         model_format = models.get_hdf5_attr(hdf5.attrs, 'model_format', str)
         logger.error(model_format)
-        if model_format == 'bspline':
+        if model_format == 'poly':
+            return PolySEFDModel.from_hdf5(hdf5)
+        elif model_format == 'bspline':
             return BSplineSEFDModel.from_hdf5(hdf5)
         else:
             raise models.ModelFormatError(
@@ -149,6 +151,22 @@ class PolySEFDModel(SEFDModel):
         return self._coefs
 
     @property
+    def min_frequency(self) -> Optional[u.Quantity]:
+        return self._min_frequency
+
+    @property
+    def max_frequency(self) -> Optional[u.Quantity]:
+        return self._max_frequency
+
+    @property
+    def frequency_unit(self) -> Optional[u.Unit]:
+        return self._frequency_unit
+
+    @property
+    def correlator_efficiency(self) -> Optional[float]:
+        return self._correlator_efficiency
+
+    @property
     def antenna(self) -> Optional[str]:
         return self._antenna
 
@@ -168,7 +186,7 @@ class PolySEFDModel(SEFDModel):
         max_frequency = models.get_hdf5_attr(attrs, 'max_frequency', float, required=False)
         frequency_unit = models.get_hdf5_attr(attrs, 'frequency_unit', int, required=False)
         correlator_efficiency = models.get_hdf5_attr(attrs, 'correlator_efficiency', float,
-                                                     required=True)
+                                                     required=False)
         band = models.get_hdf5_attr(attrs, 'band', str, required=True)
         antenna = models.get_hdf5_attr(attrs, 'antenna', str, required=False)
         receiver = models.get_hdf5_attr(attrs, 'receiver', str, required=False)
@@ -187,11 +205,14 @@ class PolySEFDModel(SEFDModel):
             hdf5.attrs['antenna'] = self._antenna
         if self.receiver is not None:
             hdf5.attrs['receiver'] = self._receiver
-        hdf5.attrs['min_frequency'] = self._min_frequency
-        hdf5.attrs['max_frequency'] = self._max_frequency
-        hdf5.attrs['frequency_unit'] = self._frequency_unit
-        hdf5.attrs['correlator_efficiency'] = self._correlator_efficiency
-
+        if self.min_frequency is not None:
+            hdf5.attrs['min_frequency'] = self._min_frequency
+        if self.max_frequency is not None:
+            hdf5.attrs['max_frequency'] = self._max_frequency
+        if self.frequency_unit is not None:
+            hdf5.attrs['frequency_unit'] = self._frequency_unit
+        if self.correlator_efficiency is not None:
+            hdf5.attrs['correlator_efficiency'] = self._correlator_efficiency
         hdf5.create_dataset('coefs', data=self._coefs, track_times=False)
 
 

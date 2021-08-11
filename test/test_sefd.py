@@ -34,7 +34,7 @@ except ImportError:
 import katsdpmodels.fetch.requests as fetch_requests
 
 
-COEFS = np.array([0.0, 0.0, 0.0])
+COEFS = np.array([0.0, 0.0, 0.0, 0.0])
 
 
 @contextlib.contextmanager
@@ -103,8 +103,7 @@ def test_no_band(poly_model_file) -> None:
         (None, None)
     ]
 )
-def test_to_file(poly_model,
-                 antenna: Optional[str], receiver: Optional[str]) -> None:
+def test_to_file(poly_model, antenna: Optional[str], receiver: Optional[str]) -> None:
     model = poly_model
     model._antenna = antenna
     model._receiver = receiver
@@ -124,6 +123,7 @@ def test_bad_model_format(poly_model_file) -> None:
     h5file = poly_model_file
     h5file.attrs['model_format'] = 'BAD_FORMAT'
     with pytest.raises(models.ModelFormatError,
-                       match="Unknown model_format 'BAD_FORMAT' for diode_to_sky"):
+                       match=f"Unknown model_format '{h5file.attrs['model_format']}' "
+                             f"for sefd"):
         with serve_model(h5file):
             pass
