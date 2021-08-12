@@ -61,6 +61,8 @@ def poly_model_file(tmp_path) -> h5py.File:
     h5file.attrs['antenna'] = 'm001'
     h5file.attrs['receiver'] = 'r001'
     h5file.attrs['band'] = 'UHF'
+    frequency = np.arange(64) * 1e7 + 1e9
+    h5file.create_dataset('frequency', data=frequency)
     h5file.create_dataset('coefs', data=COEFS.astype(np.float64))
     return h5file
 
