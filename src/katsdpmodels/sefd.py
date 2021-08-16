@@ -15,6 +15,9 @@
 ################################################################################
 
 """System-Equivalent Flux Density Models
+Models MUST allow dish dependence.
+    Required for heterogeneous MeerKAT+ array.
+TODO
 Models MUST provide separate H and V SEFD.
     Needed to simulate visibilities.
 Models MAY provide combined (Stokes-I) SEFD.
@@ -22,8 +25,6 @@ Models MAY provide combined (Stokes-I) SEFD.
     fly rather than stored.
 Models SHOULD provide sensible values even at RFI-affected frequencies.
     Needed for simulation, and looks better in an imaging report.
-Models MUST allow dish dependence.
-    Required for heterogeneous MeerKAT+ array.
 """
 import numpy as np
 
@@ -127,7 +128,7 @@ class PolySEFDModel(SEFDModel):
 
     def __init__(self,
                  frequency: u.Quantity,
-                 coefs: u.Quantity,
+                 coefs: Tuple[ArrayLike, ArrayLike],
                  correlator_efficiency: Optional[float],
                  *,
                  band: str,
@@ -141,11 +142,7 @@ class PolySEFDModel(SEFDModel):
             if self._frequency_resolution <= 0 * u.Hz:
                 raise ValueError('frequencies must be strictly increasing')
         else:
-            # We can set _frequency_resolution easily enough, but
-            # scipy.interpolate also refuses to work with just a single (or zero)
-            # elements on the interpolation axis.
             raise NotImplementedError('at least 2 frequencies are currently required')
-
         self.coefs = coefs  # coefs.astype(np.complex64, copy=False, casting='same_kind')
         if correlator_efficiency is not None:
             self._correlator_efficiency = correlator_efficiency
@@ -183,8 +180,9 @@ class PolySEFDModel(SEFDModel):
     def from_hdf5(cls: Type[_P], hdf5: h5py.File) -> _P:
         """"""
         attrs = hdf5.attrs
+        # if attrs = None: raise NoSEFDModelError("")
         correlator_efficiency = models.get_hdf5_attr(attrs, 'correlator_efficiency', float,
-                                                     required=False)
+                                                     required=True)
         frequency = models.get_hdf5_dataset(hdf5, 'frequency')
         frequency = models.require_columns('frequency', frequency, np.float32, 1)
         # u.Quantity has issues with h5py numpy-like's, so force loading
@@ -214,9 +212,6 @@ class PolySEFDModel(SEFDModel):
 class BSplineSEFDModel(SEFDModel):
     """
     captures a BSpline SEFD model
-    TODO: using a native spline object requires scipy, but can't store scipy objects natively in
-    hdf5 format.
-
     model_format: 'bspline'
     """
 

@@ -61,6 +61,7 @@ def poly_model_file(tmp_path) -> h5py.File:
     h5file.attrs['antenna'] = 'm001'
     h5file.attrs['receiver'] = 'r001'
     h5file.attrs['band'] = 'UHF'
+    h5file.attrs['correlator_efficiency'] = 0.5
     frequency = np.arange(64) * 1e7 + 1e9
     h5file.create_dataset('frequency', data=frequency)
     h5file.create_dataset('coefs', data=COEFS.astype(np.float64))
@@ -121,11 +122,19 @@ def test_to_file(poly_model, antenna: Optional[str], receiver: Optional[str]) ->
     np.testing.assert_equal(new_model.coefs, model.coefs)
 
 
-def test_bad_model_format(poly_model_file) -> None:
+def test_bad_model_format(poly_model_file: h5py.File) -> None:
     h5file = poly_model_file
     h5file.attrs['model_format'] = 'BAD_FORMAT'
     with pytest.raises(models.ModelFormatError,
                        match=f"Unknown model_format '{h5file.attrs['model_format']}' "
                              f"for sefd"):
+        with serve_model(h5file):
+            pass
+
+
+def test_missing_required_attr(poly_model_file: h5py.File) -> None:
+    h5file = poly_model_file
+    del h5file.attrs['correlator_efficiency']
+    with pytest.raises(models.DataError, match="attribute 'correlator_efficiency' is missing"):
         with serve_model(h5file):
             pass
