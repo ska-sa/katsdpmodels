@@ -122,7 +122,6 @@ def test_to_file(poly_model, antenna: Optional[str], receiver: Optional[str]) ->
     np.testing.assert_equal(new_model.coefs, model.coefs)
 
 
-
 def test_bad_model_format(poly_model_file: h5py.File) -> None:
     h5file = poly_model_file
     h5file.attrs['model_format'] = 'BAD_FORMAT'
