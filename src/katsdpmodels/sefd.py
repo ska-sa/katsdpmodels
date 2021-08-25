@@ -49,7 +49,7 @@ from . import models
 # use a type alias for file_like objects
 _FileLike = Union[io.IOBase, io.BytesIO, BinaryIO]
 
-_P = TypeVar('_P', bound='PolySEFDModel')
+_P = TypeVar('_P', bound='SEFDPoly')
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +69,7 @@ class SEFDModel(models.SimpleHDF5Model):
     @property
     def band(self) -> str:
         """String identifier of the receiver band to which this model applies."""
+        raise NotImplementedError()
 
     @property
     def antenna(self) -> Optional[str]:
@@ -103,7 +104,7 @@ class SEFDModel(models.SimpleHDF5Model):
         model_format = models.get_hdf5_attr(hdf5.attrs, 'model_format', str)
         # logger.error(model_format)
         if model_format == 'poly':
-            return PolySEFDModel.from_hdf5(hdf5)
+            return SEFDPoly.from_hdf5(hdf5)
         else:
             raise models.ModelFormatError(
                 f'Unknown model_format {model_format!r} for {cls.model_type}')
@@ -112,7 +113,7 @@ class SEFDModel(models.SimpleHDF5Model):
         raise NotImplementedError()  # pragma: nocover
 
 
-class PolySEFDModel(SEFDModel):
+class SEFDPoly(SEFDModel):
     """
     captures a polynomial SEFD model
     model_format: 'poly'
@@ -171,8 +172,6 @@ class PolySEFDModel(SEFDModel):
     def from_hdf5(cls: Type[_P], hdf5: h5py.File) -> _P:
         """"""
         attrs = hdf5.attrs
-        correlator_efficiency = models.get_hdf5_attr(attrs, 'correlator_efficiency', float,
-                                                     required=True)
         frequency = models.get_hdf5_dataset(hdf5, 'frequency')
         frequency = models.require_columns('frequency', frequency, np.float32, 1)
         # u.Quantity has issues with h5py numpy-like's, so force loading
@@ -181,6 +180,8 @@ class PolySEFDModel(SEFDModel):
         coefs = models.get_hdf5_dataset(hdf5, 'coefs')
         coefs = models.require_columns('coefs', coefs, np.float64, 1)
         band = models.get_hdf5_attr(attrs, 'band', str, required=True)
+        correlator_efficiency = models.get_hdf5_attr(attrs, 'correlator_efficiency', float,
+                                                     required=True)
         antenna = models.get_hdf5_attr(attrs, 'antenna', str)
         receiver = models.get_hdf5_attr(attrs, 'receiver', str)
         return cls(frequency, coefs, correlator_efficiency,
@@ -188,11 +189,11 @@ class PolySEFDModel(SEFDModel):
 
     def to_hdf5(self, hdf5: h5py.File) -> None:
         """"""
-        hdf5.attrs['band'] = self._band
+        hdf5.attrs['band'] = self.band
         if self.antenna is not None:
-            hdf5.attrs['antenna'] = self._antenna
+            hdf5.attrs['antenna'] = self.antenna
         if self.receiver is not None:
-            hdf5.attrs['receiver'] = self._receiver
-        hdf5.attrs['correlator_efficiency'] = self._correlator_efficiency
-        hdf5.create_dataset('frequency', data=self.frequency, track_order=False)
+            hdf5.attrs['receiver'] = self.receiver
+        hdf5.attrs['correlator_efficiency'] = self.correlator_efficiency
+        hdf5.create_dataset('frequency', data=self.frequency, track_times=False)
         hdf5.create_dataset('coefs', data=self.coefs, track_times=False)

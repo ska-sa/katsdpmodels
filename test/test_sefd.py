@@ -38,11 +38,11 @@ COEFS = np.array([0.0, 0.0, 0.0, 0.0])
 
 
 @contextlib.contextmanager
-def serve_model(model_file: h5py.File) -> Generator[sefd.PolySEFDModel, None, None]:
+def serve_model(model_file: h5py.File) -> Generator[sefd.SEFDPoly, None, None]:
     path = pathlib.Path(model_file.filename)
     model_file.close()  # Ensures data is written to the file
     with fetch_requests.fetch_model(path.as_uri(), sefd.SEFDModel) as model:
-        yield cast(sefd.PolySEFDModel, model)
+        yield cast(sefd.SEFDPoly, model)
 
 
 @pytest.fixture
@@ -61,15 +61,15 @@ def poly_model_file(tmp_path) -> h5py.File:
     h5file.attrs['antenna'] = 'm001'
     h5file.attrs['receiver'] = 'r001'
     h5file.attrs['band'] = 'UHF'
-    h5file.attrs['correlator_efficiency'] = 0.5
+    h5file.attrs['correlator_efficiency'] = 0.85
     frequency = np.arange(64) * 1e7 + 1e9
     h5file.create_dataset('frequency', data=frequency)
-    h5file.create_dataset('coefs', data=COEFS.astype(np.float64))
+    h5file.create_dataset('coefs', data=COEFS)
     return h5file
 
 
 @pytest.fixture
-def poly_model(poly_model_file) -> Generator[sefd.PolySEFDModel, None, None]:
+def poly_model(poly_model_file) -> Generator[sefd.SEFDPoly, None, None]:
     with serve_model(poly_model_file) as model:
         yield model
 
@@ -106,16 +106,17 @@ def test_no_band(poly_model_file) -> None:
         (None, None)
     ]
 )
-def test_to_file(poly_model, antenna: Optional[str], receiver: Optional[str]) -> None:
+def test_to_file(poly_model: sefd.SEFDPoly, antenna: Optional[str], receiver: Optional[str])\
+        -> None:
     model = poly_model
     model._antenna = antenna
     model._receiver = receiver
     fh = io.BytesIO()
     model.to_file(fh, content_type='application/x-hdf5')
     fh.seek(0)
-    new_model = sefd.PolySEFDModel.from_file(
-        fh, 'http://test.invalid/test.h5', content_type='application/x-hdf5')
-    assert isinstance(new_model, sefd.PolySEFDModel)
+    new_model = sefd.SEFDPoly.from_file(fh, 'http://test.invalid/test.h5',
+                                        content_type='application/x-hdf5')
+    assert isinstance(new_model, sefd.SEFDPoly)
     assert new_model.antenna == antenna
     assert new_model.receiver == receiver
     assert new_model.band == model.band
