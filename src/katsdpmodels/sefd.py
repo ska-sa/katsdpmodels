@@ -14,13 +14,12 @@
 # limitations under the License.
 ################################################################################
 
-"""System-Equivalent Flux Density Models
-<<<<<<< HEAD
+"""
+System-Equivalent Flux Density Models
 =======
 Models MUST allow dish dependence.
     Required for heterogeneous MeerKAT+ array.
 TODO
->>>>>>> ec4a9e4bd7ab1f44d70863e7117e2303dcc11369
 Models MUST provide separate H and V SEFD.
     Needed to simulate visibilities.
 Models MAY provide combined (Stokes-I) SEFD.
@@ -28,11 +27,8 @@ Models MAY provide combined (Stokes-I) SEFD.
     fly rather than stored.
 Models SHOULD provide sensible values even at RFI-affected frequencies.
     Needed for simulation, and looks better in an imaging report.
-<<<<<<< HEAD
 Models MUST allow dish dependence.
     Required for heterogeneous MeerKAT+ array.
-=======
->>>>>>> ec4a9e4bd7ab1f44d70863e7117e2303dcc11369
 """
 import numpy as np
 
@@ -135,28 +131,24 @@ class PolySEFDModel(SEFDModel):
     model_format: ClassVar[Literal['poly']] = 'poly'
 
     def __init__(self,
-<<<<<<< HEAD
+
                  min_frequency: u.Quantity,
                  max_frequency: u.Quantity,
                  frequency_unit: u.Unit,
                  coefs: u.Quantity,
-=======
                  frequency: u.Quantity,
                  coefs: Tuple[ArrayLike, ArrayLike],
->>>>>>> ec4a9e4bd7ab1f44d70863e7117e2303dcc11369
                  correlator_efficiency: Optional[float],
                  *,
                  band: str,
                  antenna: Optional[str] = None,
                  receiver: Optional[str] = None) -> None:
         super().__init__()
-<<<<<<< HEAD
         self._min_frequency = min_frequency
         self._max_frequency = max_frequency
         self._frequency_unit = frequency_unit
         self._coefs = coefs
         self._correlator_efficiency = correlator_efficiency
-=======
         # self._frequency_range = frequency_range
         self.frequency = frequency.astype(np.float32, copy=False, casting='same_kind')
         if len(frequency) > 1:
@@ -170,13 +162,11 @@ class PolySEFDModel(SEFDModel):
             self._correlator_efficiency = correlator_efficiency
         else:
             self._correlator_efficiency = 1.0
->>>>>>> ec4a9e4bd7ab1f44d70863e7117e2303dcc11369
         self._band = band
         self._antenna = antenna
         self._receiver = receiver
 
     @property
-<<<<<<< HEAD
     def coefs(self) -> ArrayLike:
         """ TODO: check that u.Quantity is ArrayLike """
         return self._coefs
@@ -192,14 +182,12 @@ class PolySEFDModel(SEFDModel):
     @property
     def frequency_unit(self) -> Optional[u.Unit]:
         return self._frequency_unit
-=======
     def frequency_range(self) -> Tuple[u.Quantity, u.Quantity]:
         return self.frequency[0], self.frequency[-1]
 
     @property
     def frequency_resolution(self) -> u.Quantity:
         return self._frequency_resolution
->>>>>>> ec4a9e4bd7ab1f44d70863e7117e2303dcc11369
 
     @property
     def correlator_efficiency(self) -> Optional[float]:
@@ -221,7 +209,6 @@ class PolySEFDModel(SEFDModel):
     def from_hdf5(cls: Type[_P], hdf5: h5py.File) -> _P:
         """"""
         attrs = hdf5.attrs
-<<<<<<< HEAD
         min_frequency = models.get_hdf5_attr(attrs, 'min_frequency', float, required=False)
         max_frequency = models.get_hdf5_attr(attrs, 'max_frequency', float, required=False)
         frequency_unit = models.get_hdf5_attr(attrs, 'frequency_unit', int, required=False)
@@ -236,7 +223,6 @@ class PolySEFDModel(SEFDModel):
 
         return cls(min_frequency, max_frequency, frequency_unit,
                    coefs, correlator_efficiency,
-=======
         # if attrs = None: raise NoSEFDModelError("")
         correlator_efficiency = models.get_hdf5_attr(attrs, 'correlator_efficiency', float,
                                                      required=True)
@@ -251,7 +237,6 @@ class PolySEFDModel(SEFDModel):
         antenna = models.get_hdf5_attr(attrs, 'antenna', str, required=False)
         receiver = models.get_hdf5_attr(attrs, 'receiver', str, required=False)
         return cls(frequency, coefs, correlator_efficiency,
->>>>>>> ec4a9e4bd7ab1f44d70863e7117e2303dcc11369
                    band=band, antenna=antenna, receiver=receiver)
 
     def to_hdf5(self, hdf5: h5py.File) -> None:
@@ -261,7 +246,6 @@ class PolySEFDModel(SEFDModel):
             hdf5.attrs['antenna'] = self._antenna
         if self.receiver is not None:
             hdf5.attrs['receiver'] = self._receiver
-<<<<<<< HEAD
         if self.min_frequency is not None:
             hdf5.attrs['min_frequency'] = self._min_frequency
         if self.max_frequency is not None:
@@ -271,12 +255,10 @@ class PolySEFDModel(SEFDModel):
         if self.correlator_efficiency is not None:
             hdf5.attrs['correlator_efficiency'] = self._correlator_efficiency
         hdf5.create_dataset('coefs', data=self._coefs, track_times=False)
-=======
         hdf5.attrs['correlator_efficiency'] = self._correlator_efficiency
 
         hdf5.create_dataset('frequency', data=self.frequency, track_order=False)
         hdf5.create_dataset('coefs', data=self.coefs, track_times=False)
->>>>>>> ec4a9e4bd7ab1f44d70863e7117e2303dcc11369
 
 
 class BSplineSEFDModel(SEFDModel):
