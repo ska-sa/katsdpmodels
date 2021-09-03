@@ -130,7 +130,7 @@ class SEFDPoly(SEFDModel):
         super().__init__()
         self.frequency = frequency.astype(np.float32, copy=False, casting='same_kind')
         if len(frequency) > 1:
-            self._frequency_resolution = np.min(np.diff(frequency)) * u.Hz
+            self._frequency_resolution = np.min(np.diff(frequency))
             if self._frequency_resolution <= 0 * u.Hz:
                 raise ValueError('frequencies must be strictly increasing')
         else:
