@@ -106,8 +106,8 @@ def test_no_band(poly_model_file) -> None:
         (None, None)
     ]
 )
-def test_to_file(poly_model: sefd.SEFDPoly, antenna: Optional[str], receiver: Optional[str])\
-        -> None:
+def test_to_file(poly_model: sefd.SEFDPoly, antenna: Optional[str],
+                 receiver: Optional[str]) -> None:
     model = poly_model
     model._antenna = antenna
     model._receiver = receiver

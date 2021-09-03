@@ -35,7 +35,6 @@ import h5py
 import logging
 import io
 
-# from pathlib import Path
 from typing import Any, BinaryIO, ClassVar, Optional, Tuple, Type, TypeVar, Union
 from typing_extensions import Literal
 
@@ -102,7 +101,6 @@ class SEFDModel(models.SimpleHDF5Model):
     @classmethod
     def from_hdf5(cls, hdf5: h5py.File) -> 'SEFDModel':
         model_format = models.get_hdf5_attr(hdf5.attrs, 'model_format', str)
-        # logger.error(model_format)
         if model_format == 'poly':
             return SEFDPoly.from_hdf5(hdf5)
         else:
@@ -132,12 +130,12 @@ class SEFDPoly(SEFDModel):
         super().__init__()
         self.frequency = frequency.astype(np.float32, copy=False, casting='same_kind')
         if len(frequency) > 1:
-            self._frequency_resolution = np.min(np.diff(frequency))
+            self._frequency_resolution = np.min(np.diff(frequency)) * u.Hz
             if self._frequency_resolution <= 0 * u.Hz:
                 raise ValueError('frequencies must be strictly increasing')
         else:
             raise NotImplementedError('at least 2 frequencies are currently required')
-        self.coefs = coefs  # coefs.astype(np.complex64, copy=False, casting='same_kind')
+        self.coefs = coefs
         if correlator_efficiency is not None:
             self._correlator_efficiency = correlator_efficiency
         else:
@@ -146,9 +144,11 @@ class SEFDPoly(SEFDModel):
         self._antenna = antenna
         self._receiver = receiver
 
+    @property
     def frequency_range(self) -> Tuple[u.Quantity, u.Quantity]:
         return self.frequency[0], self.frequency[-1]
 
+    @property
     def frequency_resolution(self) -> u.Quantity:
         return self._frequency_resolution
 
