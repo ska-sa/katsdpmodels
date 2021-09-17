@@ -17,9 +17,9 @@
 """System-Equivalent Flux Density Models
 Models MUST allow dish dependence.
     Required for heterogeneous MeerKAT+ array.
-TODO
 Models MUST provide separate H and V SEFD.
     Needed to simulate visibilities.
+TODO
 Models MAY provide combined (Stokes-I) SEFD.
     It’s a handy convenience for estimating image noise, but should probably be computed on the
     fly rather than stored.
@@ -31,6 +31,7 @@ Models MUST allow dish dependence.
 import numpy as np
 
 import astropy.units as u
+import enum
 import h5py
 import logging
 import io
@@ -51,6 +52,12 @@ _FileLike = Union[io.IOBase, io.BytesIO, BinaryIO]
 _P = TypeVar('_P', bound='SEFDPoly')
 
 logger = logging.getLogger(__name__)
+
+
+class Pol(enum.Enum):
+    """Enum of the two polarization flavours of SEFD models."""
+    H = 1
+    V = 2
 
 
 class SEFDModel(models.SimpleHDF5Model):
@@ -124,6 +131,7 @@ class SEFDPoly(SEFDModel):
                  coefs: Tuple[ArrayLike, ArrayLike],
                  correlator_efficiency: Optional[float],
                  *,
+                 pol: Pol,
                  band: str,
                  antenna: Optional[str] = None,
                  receiver: Optional[str] = None) -> None:
@@ -140,6 +148,7 @@ class SEFDPoly(SEFDModel):
             self._correlator_efficiency = correlator_efficiency
         else:
             self._correlator_efficiency = 1.0
+        self._pol = Pol
         self._band = band
         self._antenna = antenna
         self._receiver = receiver
@@ -155,6 +164,10 @@ class SEFDPoly(SEFDModel):
     @property
     def correlator_efficiency(self) -> Optional[float]:
         return self._correlator_efficiency
+
+    @property
+    def pol(self) -> Type[Pol]:
+        return self._pol
 
     @property
     def antenna(self) -> Optional[str]:
@@ -180,20 +193,21 @@ class SEFDPoly(SEFDModel):
         coefs = models.get_hdf5_dataset(hdf5, 'coefs')
         coefs = models.require_columns('coefs', coefs, np.float64, 1)
         band = models.get_hdf5_attr(attrs, 'band', str, required=True)
-        correlator_efficiency = models.get_hdf5_attr(attrs, 'correlator_efficiency', float,
-                                                     required=True)
+        corr_eff = models.get_hdf5_attr(attrs, 'corr_eff', float, required=True)
+        pol = models.get_hdf5_attr(attrs, 'pol', Pol, required=True)
         antenna = models.get_hdf5_attr(attrs, 'antenna', str)
         receiver = models.get_hdf5_attr(attrs, 'receiver', str)
-        return cls(frequency, coefs, correlator_efficiency,
-                   band=band, antenna=antenna, receiver=receiver)
+        return cls(frequency, coefs, corr_eff,
+                   pol=pol, band=band, antenna=antenna, receiver=receiver)
 
     def to_hdf5(self, hdf5: h5py.File) -> None:
         """"""
+        hdf5.create_dataset('frequency', data=self.frequency, track_times=False)
+        hdf5.create_dataset('coefs', data=self.coefs, track_times=False)
+        hdf5.attrs['corr_eff'] = self.correlator_efficiency
+        hdf5.attrs['pol'] = self.pol
         hdf5.attrs['band'] = self.band
         if self.antenna is not None:
             hdf5.attrs['antenna'] = self.antenna
         if self.receiver is not None:
             hdf5.attrs['receiver'] = self.receiver
-        hdf5.attrs['correlator_efficiency'] = self.correlator_efficiency
-        hdf5.create_dataset('frequency', data=self.frequency, track_times=False)
-        hdf5.create_dataset('coefs', data=self.coefs, track_times=False)
