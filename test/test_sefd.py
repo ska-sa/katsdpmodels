@@ -25,7 +25,7 @@ import pathlib
 import pytest
 
 from katsdpmodels import models, sefd
-from typing import Any, Generator, Optional, cast
+from typing import Any, Generator, List, Optional, cast
 try:
     from numpy.typing import ArrayLike
 except ImportError:
@@ -35,6 +35,8 @@ import katsdpmodels.fetch.requests as fetch_requests
 
 
 COEFS = np.array([0.0, 0.0, 0.0, 0.0])
+ANTS = ['m001', 'm123']
+RECS = ['r987', 'r123']
 
 
 @contextlib.contextmanager
@@ -63,9 +65,8 @@ def poly_model_file(tmp_path) -> h5py.File:
     h5file.attrs['correlator_efficiency'] = 0.85
     h5file.attrs['pol'] = 1
     h5file.attrs['band'] = 'UHF'
-    h5file.attrs['antenna'] = 'm001'
-    h5file.attrs['receiver'] = 'r001'
-
+    h5file.create_dataset('antennas', data=ANTS, track_times=False)
+    h5file.create_dataset('receivers', data=RECS, track_times=False)
     return h5file
 
 
@@ -77,18 +78,20 @@ def poly_model(poly_model_file) -> Generator[sefd.SEFDPoly, None, None]:
 
 def test_properties(poly_model) -> None:
     model = poly_model
-    assert model.antenna == 'm001'
-    assert model.receiver == 'r001'
+    # assert model.antennas == 'm001'
+    # assert model.receivers == 'r001'
+    # assert model.antennas == ANTS
     assert model.band == 'UHF'
+    np.testing.assert_equal(model.coefs, COEFS)
 
 
 def test_no_optional_properties(poly_model_file) -> None:
     h5file = poly_model_file
-    del h5file.attrs['receiver']
-    del h5file.attrs['antenna']
+    del h5file['receivers']
+    del h5file['antennas']
     with serve_model(h5file) as model:
-        assert model.antenna is None
-        assert model.receiver is None
+        assert model.antennas is None
+        assert model.receivers is None
 
 
 def test_no_band(poly_model_file) -> None:
@@ -100,26 +103,24 @@ def test_no_band(poly_model_file) -> None:
 
 
 @pytest.mark.parametrize(
-    'antenna, receiver',
+    'antennas, receivers',
     [
-        ('m001', 'r001'),
-        ('m123', 'r987'),
+        (['m001'], ['r001']),
+        (['m123'], ['r987']),
         (None, None)
     ]
 )
-def test_to_file(poly_model: sefd.SEFDPoly, antenna: Optional[str],
-                 receiver: Optional[str]) -> None:
+def test_to_file(poly_model: sefd.SEFDPoly, antennas: Optional[List[str]],
+                 receivers: Optional[List[str]]) -> None:
     model = poly_model
-    model.antenna = antenna
-    model.receiver = receiver
+    model._antennas = antennas
+    model._receivers = receivers
     fh = io.BytesIO()
     model.to_file(fh, content_type='application/x-hdf5')
     fh.seek(0)
     new_model = sefd.SEFDPoly.from_file(fh, 'http://test.invalid/test.h5',
                                         content_type='application/x-hdf5')
     assert isinstance(new_model, sefd.SEFDPoly)
-    assert new_model.antenna == antenna
-    assert new_model.receiver == receiver
     assert new_model.band == model.band
     np.testing.assert_equal(new_model.coefs, model.coefs)
 

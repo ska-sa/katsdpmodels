@@ -15,10 +15,10 @@
 ################################################################################
 
 """System-Equivalent Flux Density Models
-Models MUST allow dish dependence.
-    Required for heterogeneous MeerKAT+ array.
 Models MUST provide separate H and V SEFD.
     Needed to simulate visibilities.
+Models MUST allow dish dependence.
+    Required for heterogeneous MeerKAT+ array.
 TODO
 Models MAY provide combined (Stokes-I) SEFD.
     It’s a handy convenience for estimating image noise, but should probably be computed on the
@@ -34,8 +34,10 @@ import h5py
 import logging
 import io
 
-from typing import Any, BinaryIO, ClassVar, Optional, Tuple, Type, TypeVar, Union
+from typing import Any, BinaryIO, ClassVar, List, Optional, Tuple, Type, TypeVar, Union
 from typing_extensions import Literal
+
+from .models import DataError
 
 try:
     from numpy.typing import ArrayLike
@@ -56,6 +58,7 @@ class Pol(enum.Enum):
     """"""
     H = 1
     V = 2
+    Stokes_I = 3
 
 
 class SEFDModel(models.SimpleHDF5Model):
@@ -67,6 +70,9 @@ class SEFDModel(models.SimpleHDF5Model):
     The SEFD for a particular radio telescope is a measured quantity, and thus relates to a set of
     antennas and receiver chains. If it is available, the information about these components is
     able to be stored in the model.
+
+    TBC: This quantity is not expected to be nor modeled as significantly variable over timescales
+    shorter than the measurement interval or between antennas of the same physical design.
 
     model_type: sefd
 
@@ -80,8 +86,9 @@ class SEFDModel(models.SimpleHDF5Model):
         raise NotImplementedError()
 
     @property
-    def antenna(self) -> Optional[str]:
-        """The antenna to which this model applies.
+    def antennas(self) -> Optional[List[str]]:
+        """The antennas to which this model applies implemented as a list of MK-format antenna
+        identifiers.
 
         If this model is not antenna-set-specific or does not carry this
         information, it will be ``None``.
@@ -89,8 +96,9 @@ class SEFDModel(models.SimpleHDF5Model):
         raise NotImplementedError()      # pragma: nocover
 
     @property
-    def receiver(self) -> Optional[str]:
-        """The set of receiver IDs to which this model applies.
+    def receivers(self) -> Optional[List[str]]:
+        """The set of receiver IDs to which this model applies, implemented as a list of
+        MK-format receiver identifiers.
 
         If this model is not specific to a single set of receivers
         or the model does not carry this information, it will be ``None``.
@@ -135,8 +143,8 @@ class SEFDPoly(SEFDModel):
                  *,
                  pol: Pol,
                  band: str,
-                 antenna: Optional[str] = None,
-                 receiver: Optional[str] = None) -> None:
+                 antennas: Optional[List[str]] = None,
+                 receivers: Optional[List[str]] = None) -> None:
         super().__init__()
         self.frequency = frequency.astype(np.float32, copy=False, casting='same_kind')
         if len(frequency) > 1:
@@ -152,8 +160,8 @@ class SEFDPoly(SEFDModel):
             self._correlator_efficiency = 1.0
         self._pol = pol
         self._band = band
-        self._antenna = antenna if antenna is not None else None
-        self._receiver = receiver if receiver is not None else None
+        self._antennas = antennas if antennas is not None else None
+        self._receivers = receivers if receivers is not None else None
 
     @property
     def frequency_range(self) -> Tuple[u.Quantity, u.Quantity]:
@@ -172,20 +180,20 @@ class SEFDPoly(SEFDModel):
         return self._pol
 
     @property
-    def antenna(self) -> Optional[str]:
-        return self._antenna
+    def antennas(self) -> Optional[List[str]]:
+        return self._antennas
 
-    @antenna.setter
-    def antenna(self, new_set: str):
-        self._antenna = new_set
+    @antennas.setter
+    def antennas(self, new_set: List[str]):
+        self._antennas = new_set
 
     @property
-    def receiver(self) -> Optional[str]:
-        return self._receiver
+    def receivers(self) -> Optional[List[str]]:
+        return self._receivers
 
-    @receiver.setter
-    def receiver(self, new_set: str):
-        self._receiver = new_set
+    @receivers.setter
+    def receivers(self, new_set: List[str]):
+        self._receivers = new_set
 
     @property
     def band(self) -> str:
@@ -206,10 +214,21 @@ class SEFDPoly(SEFDModel):
         correlator_efficiency = models.get_hdf5_attr(attrs, 'correlator_efficiency', float,
                                                      required=True)
         pol = Pol(models.get_hdf5_attr(attrs, 'pol', int, required=True))
-        antenna = models.get_hdf5_attr(attrs, 'antenna', str)
-        receiver = models.get_hdf5_attr(attrs, 'receiver', str)
+
+        try:
+            antennas = models.get_hdf5_dataset(hdf5, 'antennas')
+            antennas = models.require_columns('antennas', antennas, str, 1)
+        except DataError:
+            antennas = None
+
+        try:
+            receivers = models.get_hdf5_dataset(hdf5, 'receivers')
+            receivers = models.require_columns('receivers', receivers, str, 1)
+        except DataError:
+            receivers = None
+
         return cls(frequency, coefs, correlator_efficiency,
-                   pol=pol, band=band, antenna=antenna, receiver=receiver)
+                   pol=pol, band=band, antennas=antennas, receivers=receivers)
 
     def to_hdf5(self, hdf5: h5py.File) -> None:
         """"""
@@ -218,7 +237,7 @@ class SEFDPoly(SEFDModel):
         hdf5.attrs['correlator_efficiency'] = self.correlator_efficiency
         hdf5.attrs['pol'] = self.pol.value
         hdf5.attrs['band'] = self.band
-        if self.antenna is not None:
-            hdf5.attrs['antenna'] = self.antenna
-        if self.receiver is not None:
-            hdf5.attrs['receiver'] = self.receiver
+        if self.antennas is not None:
+            hdf5.create_dataset('antennas', data=self._antennas, track_times=False)
+        if self.receivers is not None:
+            hdf5.create_dataset('receivers', data=self._receivers, track_times=False)
