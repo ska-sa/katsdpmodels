@@ -25,8 +25,6 @@ Models MAY provide combined (Stokes-I) SEFD.
     fly rather than stored.
 Models SHOULD provide sensible values even at RFI-affected frequencies.
     Needed for simulation, and looks better in an imaging report.
-Models MUST allow dish dependence.
-    Required for heterogeneous MeerKAT+ array.
 """
 import numpy as np
 
@@ -55,7 +53,7 @@ logger = logging.getLogger(__name__)
 
 
 class Pol(enum.Enum):
-    """Enum of the two polarization flavours of SEFD models."""
+    """"""
     H = 1
     V = 2
 
@@ -66,6 +64,10 @@ class SEFDModel(models.SimpleHDF5Model):
     flux density of a radio source that doubles the system temperature ($T_sys$) of a radiometer.
     Lower values of the SEFD indicate more sensitive performance.
 
+    The SEFD for a particular radio telescope is a measured quantity, and thus relates to a set of
+    antennas and receiver chains. If it is available, the information about these components is
+    able to be stored in the model.
+
     model_type: sefd
 
     SEFD has the following attributes:
@@ -74,24 +76,24 @@ class SEFDModel(models.SimpleHDF5Model):
 
     @property
     def band(self) -> str:
-        """String identifier of the receiver band to which this model applies."""
+        """String identifier of the frequency band to which this model applies."""
         raise NotImplementedError()
 
     @property
     def antenna(self) -> Optional[str]:
         """The antenna to which this model applies.
 
-        If this model is not antenna-specific or does not carry this
+        If this model is not antenna-set-specific or does not carry this
         information, it will be ``None``.
         """
         raise NotImplementedError()      # pragma: nocover
 
     @property
     def receiver(self) -> Optional[str]:
-        """The receiver ID to which this model applies.
+        """The set of receiver IDs to which this model applies.
 
-        If this model is not specific to a single receiver or the model does
-        not carry this information, it will be ``None``.
+        If this model is not specific to a single set of receivers
+        or the model does not carry this information, it will be ``None``.
         """
         raise NotImplementedError()      # pragma: nocover
 
@@ -148,10 +150,10 @@ class SEFDPoly(SEFDModel):
             self._correlator_efficiency = correlator_efficiency
         else:
             self._correlator_efficiency = 1.0
-        self._pol = Pol
+        self._pol = pol
         self._band = band
-        self._antenna = antenna
-        self._receiver = receiver
+        self._antenna = antenna if antenna is not None else None
+        self._receiver = receiver if receiver is not None else None
 
     @property
     def frequency_range(self) -> Tuple[u.Quantity, u.Quantity]:
@@ -166,16 +168,24 @@ class SEFDPoly(SEFDModel):
         return self._correlator_efficiency
 
     @property
-    def pol(self) -> Type[Pol]:
+    def pol(self) -> Pol:
         return self._pol
 
     @property
     def antenna(self) -> Optional[str]:
         return self._antenna
 
+    @antenna.setter
+    def antenna(self, new_set: str):
+        self._antenna = new_set
+
     @property
     def receiver(self) -> Optional[str]:
         return self._receiver
+
+    @receiver.setter
+    def receiver(self, new_set: str):
+        self._receiver = new_set
 
     @property
     def band(self) -> str:
@@ -193,19 +203,20 @@ class SEFDPoly(SEFDModel):
         coefs = models.get_hdf5_dataset(hdf5, 'coefs')
         coefs = models.require_columns('coefs', coefs, np.float64, 1)
         band = models.get_hdf5_attr(attrs, 'band', str, required=True)
-        corr_eff = models.get_hdf5_attr(attrs, 'corr_eff', float, required=True)
-        pol = models.get_hdf5_attr(attrs, 'pol', Pol, required=True)
+        correlator_efficiency = models.get_hdf5_attr(attrs, 'correlator_efficiency', float,
+                                                     required=True)
+        pol = Pol(models.get_hdf5_attr(attrs, 'pol', int, required=True))
         antenna = models.get_hdf5_attr(attrs, 'antenna', str)
         receiver = models.get_hdf5_attr(attrs, 'receiver', str)
-        return cls(frequency, coefs, corr_eff,
+        return cls(frequency, coefs, correlator_efficiency,
                    pol=pol, band=band, antenna=antenna, receiver=receiver)
 
     def to_hdf5(self, hdf5: h5py.File) -> None:
         """"""
         hdf5.create_dataset('frequency', data=self.frequency, track_times=False)
         hdf5.create_dataset('coefs', data=self.coefs, track_times=False)
-        hdf5.attrs['corr_eff'] = self.correlator_efficiency
-        hdf5.attrs['pol'] = self.pol
+        hdf5.attrs['correlator_efficiency'] = self.correlator_efficiency
+        hdf5.attrs['pol'] = self.pol.value
         hdf5.attrs['band'] = self.band
         if self.antenna is not None:
             hdf5.attrs['antenna'] = self.antenna

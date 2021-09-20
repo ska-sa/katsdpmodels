@@ -58,13 +58,14 @@ def poly_model_file(tmp_path) -> h5py.File:
     h5file.attrs['model_created'] = '2021-08-11T13:46:00Z'
     h5file.attrs['model_version'] = 1
     h5file.attrs['model_author'] = 'MeerKAT SDP developers <sdpdev+katsdpmodels@ska.ac.za>'
+    h5file.create_dataset('frequency', data=np.arange(64) * 1e7 + 1e9)
+    h5file.create_dataset('coefs', data=COEFS)
+    h5file.attrs['correlator_efficiency'] = 0.85
+    h5file.attrs['pol'] = 1
+    h5file.attrs['band'] = 'UHF'
     h5file.attrs['antenna'] = 'm001'
     h5file.attrs['receiver'] = 'r001'
-    h5file.attrs['band'] = 'UHF'
-    h5file.attrs['correlator_efficiency'] = 0.85
-    frequency = np.arange(64) * 1e7 + 1e9
-    h5file.create_dataset('frequency', data=frequency)
-    h5file.create_dataset('coefs', data=COEFS)
+
     return h5file
 
 
@@ -109,8 +110,8 @@ def test_no_band(poly_model_file) -> None:
 def test_to_file(poly_model: sefd.SEFDPoly, antenna: Optional[str],
                  receiver: Optional[str]) -> None:
     model = poly_model
-    model._antenna = antenna
-    model._receiver = receiver
+    model.antenna = antenna
+    model.receiver = receiver
     fh = io.BytesIO()
     model.to_file(fh, content_type='application/x-hdf5')
     fh.seek(0)
