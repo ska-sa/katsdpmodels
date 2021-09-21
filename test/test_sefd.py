@@ -34,7 +34,7 @@ except ImportError:
 import katsdpmodels.fetch.requests as fetch_requests
 
 
-COEFS = np.array([0.0, 0.0, 0.0, 0.0])
+COEFS = np.array([[1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0]])
 ANTS = ['m001', 'm123']
 RECS = ['r987', 'r123']
 
@@ -63,7 +63,6 @@ def poly_model_file(tmp_path) -> h5py.File:
     h5file.create_dataset('frequency', data=np.arange(64) * 1e7 + 1e9)
     h5file.create_dataset('coefs', data=COEFS)
     h5file.attrs['correlator_efficiency'] = 0.85
-    h5file.attrs['pol'] = 1
     h5file.attrs['band'] = 'UHF'
     h5file.create_dataset('antennas', data=ANTS, track_times=False)
     h5file.create_dataset('receivers', data=RECS, track_times=False)
@@ -141,3 +140,10 @@ def test_missing_required_attr(poly_model_file: h5py.File) -> None:
     with pytest.raises(models.DataError, match="attribute 'correlator_efficiency' is missing"):
         with serve_model(h5file):
             pass
+
+
+def test_call(poly_model_file: h5py.File) -> None:
+    pass
+    '''h5file = poly_model_file
+    with serve_model(h5file) as model:
+        model()'''

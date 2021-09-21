@@ -55,7 +55,6 @@ logger = logging.getLogger(__name__)
 
 
 class Pol(enum.Enum):
-    """"""
     H = 1
     V = 2
     Stokes_I = 3
@@ -87,8 +86,8 @@ class SEFDModel(models.SimpleHDF5Model):
 
     @property
     def antennas(self) -> Optional[List[str]]:
-        """The antennas to which this model applies implemented as a list of MK-format antenna
-        identifiers.
+        """The set of antenna IDs to which this model applies, implemented as a list of
+        MK-format antenna identifiers.
 
         If this model is not antenna-set-specific or does not carry this
         information, it will be ``None``.
@@ -141,7 +140,6 @@ class SEFDPoly(SEFDModel):
                  coefs: Tuple[ArrayLike, ArrayLike],
                  correlator_efficiency: Optional[float],
                  *,
-                 pol: Pol,
                  band: str,
                  antennas: Optional[List[str]] = None,
                  receivers: Optional[List[str]] = None) -> None:
@@ -158,10 +156,18 @@ class SEFDPoly(SEFDModel):
             self._correlator_efficiency = correlator_efficiency
         else:
             self._correlator_efficiency = 1.0
-        self._pol = pol
         self._band = band
         self._antennas = antennas if antennas is not None else None
         self._receivers = receivers if receivers is not None else None
+
+    def __call__(self, pol: Optional[Pol] = None):
+        pol_sefd = np.polynomial.polynomial.polyval(
+            self.frequency, self.coefs, tensor=True)
+        if pol in {Pol.H, Pol.V}:
+            sefd = pol_sefd  # pol_sefd[pol.value-1]
+        else:  # elif pol in {Pol.Stokes_I, None}:
+            sefd = np.sqrt(np.mean(np.square(pol_sefd), axis=0))
+        return sefd / self.correlator_efficiency
 
     @property
     def frequency_range(self) -> Tuple[u.Quantity, u.Quantity]:
@@ -174,10 +180,6 @@ class SEFDPoly(SEFDModel):
     @property
     def correlator_efficiency(self) -> Optional[float]:
         return self._correlator_efficiency
-
-    @property
-    def pol(self) -> Pol:
-        return self._pol
 
     @property
     def antennas(self) -> Optional[List[str]]:
@@ -209,33 +211,28 @@ class SEFDPoly(SEFDModel):
         frequency = frequency[:]
         frequency <<= u.Hz
         coefs = models.get_hdf5_dataset(hdf5, 'coefs')
-        coefs = models.require_columns('coefs', coefs, np.float64, 1)
+        coefs = models.require_columns('coefs', coefs, np.float64, 2)
         band = models.get_hdf5_attr(attrs, 'band', str, required=True)
         correlator_efficiency = models.get_hdf5_attr(attrs, 'correlator_efficiency', float,
                                                      required=True)
-        pol = Pol(models.get_hdf5_attr(attrs, 'pol', int, required=True))
-
         try:
             antennas = models.get_hdf5_dataset(hdf5, 'antennas')
             antennas = models.require_columns('antennas', antennas, str, 1)
         except DataError:
             antennas = None
-
         try:
             receivers = models.get_hdf5_dataset(hdf5, 'receivers')
             receivers = models.require_columns('receivers', receivers, str, 1)
         except DataError:
             receivers = None
-
         return cls(frequency, coefs, correlator_efficiency,
-                   pol=pol, band=band, antennas=antennas, receivers=receivers)
+                   band=band, antennas=antennas, receivers=receivers)
 
     def to_hdf5(self, hdf5: h5py.File) -> None:
         """"""
         hdf5.create_dataset('frequency', data=self.frequency, track_times=False)
         hdf5.create_dataset('coefs', data=self.coefs, track_times=False)
         hdf5.attrs['correlator_efficiency'] = self.correlator_efficiency
-        hdf5.attrs['pol'] = self.pol.value
         hdf5.attrs['band'] = self.band
         if self.antennas is not None:
             hdf5.create_dataset('antennas', data=self._antennas, track_times=False)
