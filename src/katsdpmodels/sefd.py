@@ -14,11 +14,7 @@
 # limitations under the License.
 ################################################################################
 
-"""
-=================================================================
-System-Equivalent Flux Density Models (:mod: `katsdpmodels.sefd`)
-=================================================================
-
+"""System-Equivalent Flux Density Models
 Models MUST provide separate H and V SEFD.
     Needed to simulate visibilities.
 Models MUST allow dish dependence.
@@ -165,8 +161,8 @@ class SEFDPoly(SEFDModel):
         self._receivers = receivers if receivers is not None else None
 
     def __call__(self, pol: Optional[Pol] = None):
-        pol_sefd = np.polynomial.polynomial.polyval(self.frequency, self.coefs,
-                                                                tensor=True)  # type: ignore
+        pol_sefd = np.polynomial.polynomial.polyval(
+            self.frequency, self.coefs, tensor=True)
         if pol in {Pol.H, Pol.V}:
             sefd = pol_sefd  # pol_sefd[pol.value-1]
         else:  # elif pol in {Pol.Stokes_I, None}:
