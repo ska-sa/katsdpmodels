@@ -162,7 +162,7 @@ class SEFDPoly(SEFDModel):
 
     def __call__(self, pol: Optional[Pol] = None):
         pol_sefd = np.polynomial.polynomial.polyval(
-            self.frequency, self.coefs, tensor=True)
+            self.frequency, self.coefs, tensor=True)  # pragma: nocover
         if pol in {Pol.H, Pol.V}:
             sefd = pol_sefd  # pol_sefd[pol.value-1]
         else:  # elif pol in {Pol.Stokes_I, None}:
