@@ -162,7 +162,7 @@ class SEFDPoly(SEFDModel):
         self._receivers = receivers if receivers is not None else None
 
     def __call__(self, pol: Optional[Pol] = None):
-        pol_sefd = polynomial.polynomial.polyval(
+        pol_sefd = polynomial.polynomial.polyval(  # type: ignore
             self.frequency, self.coefs, tensor=True)  # type: ignore
         if pol in {Pol.H, Pol.V}:
             sefd = pol_sefd  # pol_sefd[pol.value-1]
