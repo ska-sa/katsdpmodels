@@ -36,7 +36,7 @@ import io
 
 from typing import Any, BinaryIO, ClassVar, List, Optional, Tuple, Type, TypeVar, Union
 from typing_extensions import Literal
-from numpy import polynomial  # type: ignore
+from numpy import polynomial
 
 from .models import DataError
 
@@ -163,7 +163,7 @@ class SEFDPoly(SEFDModel):
 
     def __call__(self, pol: Optional[Pol] = None):
         pol_sefd = polynomial.polynomial.polyval(  # type: ignore
-            self.frequency, self.coefs, tensor=True)  # type: ignore
+            self.frequency, self.coefs, tensor=True)
         if pol in {Pol.H, Pol.V}:
             sefd = pol_sefd  # pol_sefd[pol.value-1]
         else:  # elif pol in {Pol.Stokes_I, None}:
