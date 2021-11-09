@@ -36,7 +36,7 @@ import io
 
 from typing import Any, BinaryIO, ClassVar, List, Optional, Tuple, Type, TypeVar, Union
 from typing_extensions import Literal
-from numpy import polynomial
+from numpy import polynomial  # type: ignore
 
 from .models import DataError
 
