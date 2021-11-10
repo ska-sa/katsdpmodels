@@ -19,10 +19,10 @@ Models MUST provide separate H and V SEFD.
     Needed to simulate visibilities.
 Models MUST allow dish dependence.
     Required for heterogeneous MeerKAT+ array.
-TODO
 Models MAY provide combined (Stokes-I) SEFD.
     It’s a handy convenience for estimating image noise, but should probably be computed on the
     fly rather than stored.
+TODO
 Models SHOULD provide sensible values even at RFI-affected frequencies.
     Needed for simulation, and looks better in an imaging report.
 """
@@ -36,7 +36,6 @@ import io
 
 from typing import Any, BinaryIO, ClassVar, List, Optional, Tuple, Type, TypeVar, Union
 from typing_extensions import Literal
-from numpy import polynomial
 
 from .models import DataError
 
@@ -147,7 +146,7 @@ class SEFDPoly(SEFDModel):
         super().__init__()
         self.frequency = frequency.astype(np.float32, copy=False, casting='same_kind')
         if len(frequency) > 1:
-            self._frequency_resolution = np.min(np.diff(frequency))
+            self._frequency_resolution = np.min(np.diff(frequency)) * u.Hz
             if self._frequency_resolution <= 0 * u.Hz:
                 raise ValueError('frequencies must be strictly increasing')
         else:
@@ -162,12 +161,12 @@ class SEFDPoly(SEFDModel):
         self._receivers = receivers if receivers is not None else None
 
     def __call__(self, pol: Optional[Pol] = None):
-        pol_sefd = polynomial.polynomial.polyval(  # type: ignore
+        pol_sefd = np.polynomial.polynomial.polyval(  # type: ignore
             self.frequency, self.coefs, tensor=True)
-        if pol in {Pol.H, Pol.V}:
-            sefd = pol_sefd  # pol_sefd[pol.value-1]
-        else:  # elif pol in {Pol.Stokes_I, None}:
+        if pol in {Pol.Stokes_I}:
             sefd = np.sqrt(np.mean(np.square(pol_sefd), axis=0))
+        elif pol in {Pol.H, Pol.V, None}:
+            sefd = pol_sefd  # pol_sefd[pol.value-1]
         return sefd / self.correlator_efficiency
 
     @property

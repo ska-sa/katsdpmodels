@@ -147,3 +147,9 @@ def test_call(poly_model_file: h5py.File) -> None:
     '''h5file = poly_model_file
     with serve_model(h5file) as model:
         model()'''
+
+
+def test_stokes_i(poly_model: sefd.SEFDPoly) -> None:
+    pass
+    ''' pol = sefd.Pol(1)
+    assert poly_model(pol)'''
